@@ -10,6 +10,8 @@ An interactive 3D anatomy explorer built with React, Three.js, and shadcn/ui. Ex
 - Orbit, zoom, and select structures directly on the body.
 - Toggle individual systems or use skeleton and organ presets.
 - Enter a focused study mode — heart, respiratory, digestive, kidney, or reproductive — which shows one topic and downloads only its geometry.
+- Focus a body region — head and neck, torso, abdomen, arm, pelvis and hips, or legs — while keeping the current system filters.
+- Zoom into teaching areas such as the brachial plexus corridor, orbit, circle of Willis, cubital fossa, or porta hepatis.
 - Move from assembled anatomy to a spaced inventory of every visible piece.
 - Search anatomical names and source identifiers.
 - Isolate a selected structure and read its details.
