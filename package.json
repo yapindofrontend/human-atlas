@@ -15,7 +15,8 @@
     "audit:coverage": "node scripts/anatomy-coverage.mjs",
     "test:coverage": "node --test scripts/anatomy-coverage.test.mjs",
     "validate:female-readiness": "node scripts/validate-female-readiness.mjs",
-    "test:female-readiness": "node --test scripts/validate-female-readiness.test.mjs"
+    "test:female-readiness": "node --test scripts/validate-female-readiness.test.mjs",
+    "lint": "oxlint --deny-warnings app components scripts web"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
