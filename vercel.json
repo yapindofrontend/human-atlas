@@ -1,1 +1,1 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","framework":"vite","buildCommand":"pnpm build","outputDirectory":"dist","installCommand":"pnpm install"}
+{"$schema":"https://openapi.vercel.sh/vercel.json","framework":"vite","buildCommand":"pnpm build","outputDirectory":"dist","installCommand":"pnpm install","rewrites":[{"source":"/female","destination":"/index.html"},{"source":"/male","destination":"/index.html"}],"redirects":[{"source":"/","destination":"/male","permanent":false}]}
