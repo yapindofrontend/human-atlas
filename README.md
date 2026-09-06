@@ -9,6 +9,7 @@ An interactive 3D anatomy explorer built with React, Three.js, and shadcn/ui. Ex
 - Switch between male reference anatomy and the experimental female study model.
 - Orbit, zoom, and select structures directly on the body.
 - Toggle individual systems or use skeleton and organ presets.
+- Enter a focused study mode — heart, respiratory, digestive, kidney, or reproductive — which shows one topic and downloads only its geometry.
 - Move from assembled anatomy to a spaced inventory of every visible piece.
 - Search anatomical names and source identifiers.
 - Isolate a selected structure and read its details.
@@ -36,13 +37,18 @@ node scripts/validate-interactions.mjs
 pnpm build
 ```
 
+`npm run validate` covers `scripts/validate-atlas.mjs` (mesh buffers, names, concept
+membership, and that every chunk stays system-pure), `scripts/validate-modes.mjs`
+(each study mode's focus and tour resolve inside its own systems, and it stays
+within its download budget), and `scripts/validate-interactions.mjs`.
+
 Validation covers mesh buffers, names and concept membership, nonoverlapping exploded layouts at desktop and mobile aspect ratios, search and inspection contracts, and tap-versus-drag handling. Browser interaction checks have exercised selection, system controls, search, isolation, rotation, and 390×844, 320×568, and 844×390 layouts. Phone controls stay clear of the exploded inventory, and isolated structures fit the space above or beside the detail panel. Physical-device performance and real multitouch hardware have not been tested.
 
 ## Anatomy data
 
 The male viewer uses **BodyParts3D 4.0**, an adult male reference anatomy, licensed **CC BY 4.0**. It does not represent every human structure or variation. Individual source meshes are distinct from named concepts, which may group multiple meshes. Descriptions distinguish general system context from individual organ explanations.
 
-Geometry is simplified for browser performance while retaining every source mesh. The packaged model contains 2,288,268 triangles and downloads approximately 33 MB of compressed geometry. Full credits, source links, and adaptation details are in [ATTRIBUTION.md](public/ATTRIBUTION.md).
+Geometry is simplified for browser performance while retaining every source mesh. The packaged model contains 2,288,268 triangles. The whole body is approximately 33 MB of compressed geometry, but chunks are system-pure and fetched on demand, so a single system costs only its own share — from 10.8 MB for the musculature down to 0.07 MB for the urinary tract. Full credits, source links, and adaptation details are in [ATTRIBUTION.md](public/ATTRIBUTION.md).
 
 > **The female model is a derived study model, not a scanned reference.** The male atlas is BodyParts3D, an actual adult male reference model. This project has not integrated a complete validated female source. The female model reuses the male skeleton, muscles, and shared organs, swaps in the HRA female pelvis and reproductive organs, adds an illustrated breast body, and reshapes the assembly with an estimated whole-body field plus localized contour refinements. Its proportions are estimates guided by ecorché illustrations, not measurements of a real body.
 
@@ -54,9 +60,28 @@ The current female model supports static exploration of displayed structures. It
 
 This is an educational explorer, not a diagnostic or surgical tool.
 
+## Focused study modes
+
+A study mode narrows the atlas to the systems one topic needs and frames what
+remains. Because chunks are system-pure, entering a mode downloads only those
+systems: the heart is 0.68 MB and the kidneys 0.07 MB, against 33 MB for the
+assembled body.
+
+Link straight into one with `?mode=<id>` — `?mode=kidney`, `?mode=heart`,
+`?mode=respiratory`, `?mode=digestive`, `?mode=reproductive`. The mode is applied
+before any geometry is requested, so a deep link never fetches the rest of the body.
+Modes are declared in `app/anatomy.ts`; `scripts/validate-modes.mjs` fails if a
+mode's focus concept resolves outside its own systems, which would silently pull in
+everything it was meant to avoid.
+
 ## How it works
 
 Geometry is merged into batches. Per-structure GPU textures control translation, visibility, and selection, while component geometry supports accurate picking. Exploded layouts pack only the visible pieces. Rendering updates when the scene changes; orbit controls remain responsive without thousands of separate draw calls.
+
+Each binary chunk holds exactly one anatomical system, and chunks load on demand as
+systems become visible. `scripts/rechunk-by-system.mjs` produces that packing by
+reslicing the published buffers using the byte offsets already recorded per part, so
+it needs no source archive and leaves the geometry byte-identical.
 
 The optional WebMCP tools expose anatomy search and inspection in compatible browsers. The visible interface works without them.
 
@@ -67,6 +92,10 @@ The repository includes browser-ready geometry. Rebuilding it is optional: obtai
 To rebuild the female geometry, `python3 scripts/convert-female.py SOURCE.glb SOURCE_PARTS.json` expects the official HRA united-female v1.5 GLB and a curated node-to-system metadata map. That external metadata map is not bundled, so the restored binary assets are currently the reproducible checkout path. Run `node scripts/optimize-anatomy.mjs atlas-female.json` after conversion; `node scripts/compress-models.mjs` compresses both atlases.
 
 Rebuild the experimental female additions with `python3 scripts/build-female-reconstruction.py` (requires NumPy). This uses the already bundled source atlases and writes a separate manifest and chunks; do not run the source simplifier on the composed reconstruction.
+
+Repacking alone does not need the source archive. `scripts/rechunk-by-system.mjs`
+reslices whatever is already in `public/models`, so it can be re-run after any
+change to the display-system mapping.
 
 ## Deploy
 
