@@ -57,15 +57,15 @@ scripts/        # Offline anatomy asset pipeline + validators (see scripts/AGENT
 - Do NOT change atlas cardinality/integrity: validators hardcode 2,234 parts, 3,432 concepts, exact triangle count, unique IDs, valid indices.
 - Do NOT treat drag/pinch/canceled touch as a tap (see PointerTap).
 - Do NOT add per-mesh draw calls — geometry is merged into batches; state lives in GPU textures.
-- Do NOT commit new lockfile flavor: `package-lock.json` + `pnpm-lock.yaml` both exist; README/Vercel use **npm**.
+- Package manager is **pnpm**. Do NOT commit `package-lock.json` — use `pnpm-lock.yaml` only.
 
 ## COMMANDS
 ```bash
-npm ci && npm run dev          # http://localhost:3016
-npm run check                  # tsc --noEmit
+pnpm install && pnpm dev       # http://localhost:3016
+pnpm check                     # tsc --noEmit
 node scripts/validate-atlas.mjs
 node scripts/validate-interactions.mjs
-npm run build                  # -> dist/
+pnpm build                     # -> dist/
 ```
 Node >=22.13. `oxfmt`/`oxlint` are installed but have NO scripts/config — run binaries directly if needed.
 
