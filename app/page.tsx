@@ -628,10 +628,15 @@ export default function AtlasViewer({
             variant="ghost"
             onClick={() => {
               setMode(null);
-              setState((s) => ({ ...s, visible: [], selected: [], isolate: false }));
+              setState((s) => ({
+                ...s,
+                visible: state.visible.length === 0 ? defaultVisible(model) : [],
+                selected: [],
+                isolate: false,
+              }));
             }}
           >
-            Hide all
+            {state.visible.length === 0 ? "Show all" : "Hide all"}
           </Button>
         </div>
       </section>
