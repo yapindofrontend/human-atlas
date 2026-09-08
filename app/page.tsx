@@ -5,7 +5,6 @@ import {
   Activity,
   ArrowUpRight,
   Boxes,
-  ChevronLeft,
   ChevronRight,
   Focus,
   Info,
@@ -893,14 +892,7 @@ export default function AtlasViewer({
         >
           <div className="detail-header">
             <div className="detail-accent" style={{ background: system?.color }} />
-            {state.isolate && isolatedConcept && chosen && chosen.id !== isolatedConcept.id ? (
-              <button className="detail-back" onClick={() => choose(isolatedConcept)}>
-                <ChevronLeft size={14} />
-                {isolatedConcept.name}
-              </button>
-            ) : (
-              <div className="eyebrow">{system?.name ?? "ANATOMY"}</div>
-            )}
+            <div className="eyebrow">{system?.name ?? "ANATOMY"}</div>
             <SheetTitle ref={detailTitle} tabIndex={-1} className="structure-title">
               {chosen?.name}
             </SheetTitle>
