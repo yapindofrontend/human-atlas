@@ -975,8 +975,12 @@ export default function AtlasViewer({
               className={`primary-action ${isolatedIsSelection ? "active" : ""}`}
               onClick={() => {
                 if (isolatedIsSelection) {
-                  setState((s) => ({ ...s, isolate: false, isolated: [], explode: 0 }));
-                  setIsolatedConcept(null);
+                  if (state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id) {
+                    choose(isolatedConcept);
+                  } else {
+                    setState((s) => ({ ...s, isolate: false, isolated: [], explode: 0 }));
+                    setIsolatedConcept(null);
+                  }
                 } else {
                   setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
                   if (!isolatedConcept) setIsolatedConcept(chosen);
