@@ -16,7 +16,9 @@
     "test:coverage": "node --test scripts/anatomy-coverage.test.mjs",
     "validate:female-readiness": "node scripts/validate-female-readiness.mjs",
     "test:female-readiness": "node --test scripts/validate-female-readiness.test.mjs",
-    "lint": "oxlint --deny-warnings app components scripts web"
+    "lint": "oxlint --deny-warnings app components scripts web",
+    "format": "prettier --write app components hooks lib web",
+    "format:check": "prettier --check app components hooks lib web"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -55,6 +57,8 @@
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.0.13",
