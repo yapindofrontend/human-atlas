@@ -435,13 +435,14 @@ ${shader.fragmentShader}`;
     const chunksFor = (s: SceneState) => {
       const visible = new Set(s.visible);
       const selection = new Set(s.selected);
+      const isolation = new Set(s.isolated);
       const need = new Set<number>();
       atlas.chunks.forEach((c, ci) => {
         if (!c.system || visible.has(c.system)) need.add(ci);
       });
-      if (selection.size)
+      if (selection.size || isolation.size)
         atlas.parts.forEach((p) => {
-          if (selection.has(p.id)) need.add(p.chunk);
+          if (selection.has(p.id) || isolation.has(p.id)) need.add(p.chunk);
         });
       return need;
     };
@@ -687,6 +688,7 @@ ${shader.fragmentShader}`;
         lastState?.visible !== s.visible ||
         lastState?.selected !== s.selected ||
         lastState?.isolate !== s.isolate ||
+        lastState?.isolated !== s.isolated ||
         lastState?.breastView !== s.breastView ||
         lastState?.region !== s.region ||
         lastState?.area !== s.area;
@@ -699,7 +701,12 @@ ${shader.fragmentShader}`;
       if (changed || moving || lastExtent < 0) {
         const visible = new Set(s.visible);
         const selection = new Set(s.selected);
-        const visibilityLookups = { visible, selected: selection };
+        const isolation = new Set(s.isolated);
+        const visibilityLookups = { visible, selected: selection, isolated: isolation };
+        const suppressHighlight =
+          s.isolate &&
+          s.isolated.length === s.selected.length &&
+          s.selected.every((id) => isolation.has(id));
         const shown = (p: Part, i: number) => {
           if (!partIsVisible(p, s, visibilityLookups)) return false;
           if (s.isolate) return true;
@@ -744,7 +751,7 @@ ${shader.fragmentShader}`;
             dy = T.MathUtils.lerp((c.y - 0.85) * 0.28, destination.y - c.y, t);
             dz = T.MathUtils.lerp(Math.cos(angle) * 0.48, -c.z, t);
           }
-          const selected = selection.has(p.id);
+          const selected = !suppressHighlight && selection.has(p.id);
           data.set([dx, dy, dz, shown(p, i) ? 1 : 0], i * 4);
           selectedData[i * 4] = selected ? 255 : 0;
           markerPositions.set(
@@ -780,13 +787,20 @@ ${shader.fragmentShader}`;
       if (moving && !s.isolate && amount > 0.45)
         fit(amount > 0.5 ? "front" : s.view, Math.max(0, (amount - 0.3) / 0.7));
       const isolateKey = s.isolate
-        ? s.selected.join(",") + ":" + s.reset + ":" + s.inspectorOpen + ":" + camera.aspect
+        ? (s.isolated.length ? s.isolated : s.selected).join(",") +
+          ":" +
+          s.reset +
+          ":" +
+          s.inspectorOpen +
+          ":" +
+          camera.aspect
         : "";
       if (isolateKey !== lastIsolate || (s.isolate && moving)) {
         if (s.isolate) {
+          const boundary = s.isolated.length ? s.isolated : s.selected;
           const box = new T.Box3();
           atlas.parts.forEach((p, i) => {
-            if (s.selected.includes(p.id))
+            if (boundary.includes(p.id))
               box.union(
                 bounds[i]
                   .clone()

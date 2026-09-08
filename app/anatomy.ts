@@ -327,6 +327,7 @@ export interface SceneState {
   visible: SystemId[];
   selected: string[];
   isolate: boolean;
+  isolated: string[];
   region: RegionId | null;
   area: AreaId | null;
   view: View;
@@ -541,10 +542,14 @@ export function explanation(name: string, system: SystemId, sex: "male" | "femal
 export function partIsVisible(
   part: Part,
   state: SceneState,
-  lookups?: { selected: Set<string>; visible: Set<SystemId> }
+  lookups?: { selected: Set<string>; visible: Set<SystemId>; isolated: Set<string> }
 ) {
   const selected = lookups ? lookups.selected.has(part.id) : state.selected.includes(part.id);
-  if (state.isolate) return selected;
+  if (state.isolate) {
+    if (!state.isolated.length) return selected;
+    const inBoundary = lookups ? lookups.isolated.has(part.id) : state.isolated.includes(part.id);
+    return inBoundary || selected;
+  }
   if (selected) return true;
   if (!(lookups ? lookups.visible.has(part.system) : state.visible.includes(part.system)))
     return false;
