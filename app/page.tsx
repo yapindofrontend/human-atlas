@@ -1,105 +1,1079 @@
-import {flushSync} from 'react-dom';
-import {registerAtlasTools} from './agent-tools';
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {Activity,ArrowUpRight,Boxes,ChevronRight,Focus,Info,Layers3,Pause,RotateCcw,RotateCw,Search,X} from 'lucide-react';
-import {Select,SelectTrigger,SelectValue,SelectContent,SelectItem} from '@/components/ui/select';
-import {Button} from '@/components/ui/button';
-import {Badge} from '@/components/ui/badge';
-import {Slider} from '@/components/ui/slider';
-import {Switch} from '@/components/ui/switch';
-import {Sheet,SheetContent,SheetTitle,SheetDescription} from '@/components/ui/sheet';
-import {Combobox,ComboboxInput,ComboboxContent,ComboboxList,ComboboxItem,ComboboxEmpty} from '@/components/ui/combobox';
-import AnatomyScene from './scene';
-import {AREAS,DEFAULT_VISIBLE,MODES,REGIONS,partIsVisible,SYSTEMS,EXPLANATIONS,explanation,type AreaId,type Atlas,type Concept,type Mode,type RegionId,type SceneState,type SystemId,type View} from './anatomy';
-type AnatomySex='male'|'female';
-type AnatomyModel=AnatomySex|'female-reference';
-const defaultVisible=(model:AnatomyModel):SystemId[]=>model==='female-reference'?[...DEFAULT_VISIBLE,'integumentary']:[...DEFAULT_VISIBLE];
-const initial:SceneState={breastView:'tissue',explode:0,visible:DEFAULT_VISIBLE,selected:[],isolate:false,region:null,area:null,view:'three-quarter',rotate:false,reset:0};
-export default function AtlasViewer({model,onModelChange}:{model:AnatomyModel;onModelChange:(model:AnatomyModel)=>void}){
- const sex:AnatomySex=model==='male'?'male':'female';
- const reconstructed=model==='female';
- const source=reconstructed?'BodyParts3D + HRA':sex==='female'?'Human Reference Atlas':'BodyParts3D';
- const sourceUrl=sex==='female'?'https://doi.org/10.48539/HBM352.BTSQ.586':'https://lifesciencedb.jp/bp3d/';
- const detailTitle=useRef<HTMLHeadingElement>(null);
- const preExplodeView=useRef<View|null>(null);
- const [atlas,setAtlas]=useState<Atlas|null>(null),[state,setState]=useState<SceneState>(()=>({...initial,visible:defaultVisible(model)})),[progress,setProgress]=useState(0),[error,setError]=useState(''),[panel,setPanel]=useState<'layers'|'search'|null>(null),[details,setDetails]=useState(false),[about,setAbout]=useState(false),[query,setQuery]=useState(''),[chosen,setChosen]=useState<Concept|null>(null);
- const [mode,setMode]=useState<Mode|null>(null);
- useEffect(()=>{const abort=new AbortController();setProgress(0);setError('');setAtlas(null);setChosen(null);setDetails(false);setState({...initial,visible:defaultVisible(model)});fetch(reconstructed?'/models/atlas-female-reconstructed.json':sex==='female'?'/models/atlas-female.json':'/models/atlas.json',{signal:abort.signal}).then(r=>{if(!r.ok)throw new Error('The anatomy catalogue could not be loaded.');return r.json();}).then(data=>{if(!abort.signal.aborted)setAtlas(data as Atlas);}).catch(e=>{if(e.name!=='AbortError')setError(e.message);});return()=>abort.abort();},[model]);
- useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='/'&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLTextAreaElement)){e.preventDefault();setPanel('search');setDetails(false);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
- const parts=useMemo(()=>new Map(atlas?.parts.map(p=>[p.id,p])),[atlas]);
- const counts=useMemo(()=>Object.fromEntries(SYSTEMS.map(s=>[s.id,atlas?.parts.filter(p=>p.system===s.id).length??0])),[atlas]);
- const activeSystems=SYSTEMS.filter(s=>counts[s.id]>0);
- const adultSystems=activeSystems.filter(s=>s.id!=='pregnancy');
- const organSystems=activeSystems.filter(s=>['cardiac','respiratory','digestive','urinary','endocrine','reproductive'].includes(s.id)).map(s=>s.id);
- const matchesVisible=(ids:SystemId[])=>state.visible.length===ids.length&&ids.every(id=>state.visible.includes(id));
- const selectedParts=state.selected.map(id=>parts.get(id)).filter(p=>!!p),selected=selectedParts[0],system=SYSTEMS.find(s=>s.id===selected?.system);
- const visibleCount=atlas?.parts.filter(p=>partIsVisible(p,state)).length??0;
- const chooseRegion=(id:RegionId|null)=>{setDetails(false);setState(s=>({...s,region:id,area:null,selected:[],isolate:false}));};
- const chooseArea=(id:AreaId)=>{setDetails(false);setState(s=>({...s,area:s.area===id?null:id,selected:[],isolate:false}));};
- const areas=AREAS.filter(a=>!state.region||a.regions.includes(state.region));
- const results=useMemo(()=>{if(!atlas)return[];const term=query.toLowerCase().trim();if(!term)return ['heart','brain','liver','stomach','spleen','pancreas','urinary bladder','trachea'].map(name=>atlas.concepts.find(c=>c.name.toLowerCase()===name)).filter((x):x is Concept=>!!x);return atlas.concepts.filter(c=>c.name.toLowerCase().includes(term)||c.id.toLowerCase().includes(term)).sort((a,b)=>a.name.length-b.name.length).slice(0,80);},[atlas,query]);
- const elementsFor=(c:Concept,visible:SystemId[])=>{const shown=c.elements.filter(id=>{const p=parts.get(id);return p&&visible.includes(p.system);});return shown.length?shown:c.elements;};
- const choose=(c:Concept)=>{setChosen(c);setState(s=>({...s,selected:elementsFor(c,s.visible),isolate:false,rotate:false}));setDetails(true);setPanel(null);};
- useEffect(()=>{if(!atlas)return;return registerAtlasTools(atlas,c=>flushSync(()=>choose(c)));},[atlas]);
- const choosePart=(id:string)=>{const p=parts.get(id);if(!p)return;setChosen({id:p.conceptId,name:p.name,elements:[id]});setState(s=>({...s,selected:[id],isolate:false,rotate:false}));setDetails(true);setPanel(null);};
- const modeBytes=useMemo(()=>Object.fromEntries(MODES.map(m=>[m.id,(atlas?.chunks??[]).filter(c=>c.system&&m.systems.includes(c.system)).reduce((sum,c)=>sum+(c.gzipBytes??c.bytes),0)])),[atlas]);
- const modeReady=(m:Mode)=>m.systems.every(id=>counts[id]>0);
- const enterMode=(m:Mode)=>{
-  const concept=atlas?.concepts.find(c=>c.id===m.focus)??null;
-  setMode(m);setPanel(null);setChosen(concept);
-  setState(s=>({...s,visible:m.systems,selected:concept?elementsFor(concept,m.systems):[],isolate:false,explode:0,rotate:false,view:'three-quarter',reset:s.reset+1}));
-  setDetails(!!concept);
- };
- const toggle=(id:SystemId)=>{setDetails(false);setMode(null);setState(s=>({...s,selected:[],isolate:false,breastView:(id==='mammary'||id==='integumentary')&&!s.visible.includes(id)?'tissue':s.breastView,visible:s.visible.includes(id)?s.visible.filter(x=>x!==id):[...s.visible,id]}));};
- const animRef=useRef<number|null>(null);
- const setExplodeAnimated=(target:number)=>{
-  if(animRef.current)cancelAnimationFrame(animRef.current);
-  const start=state.explode;
-  if(Math.abs(start-target)<0.005){setState(s=>({...s,explode:target,view:target>.8?'front':s.view,rotate:false}));return;}
-  const startTime=performance.now(),duration=380;
-  const step=(now:number)=>{
-   const elapsed=now-startTime,progress=Math.min(1,elapsed/duration);
-   const eased=1-Math.pow(1-progress,3);
-   const currentVal=start+(target-start)*eased;
-   setState(s=>({...s,explode:currentVal,view:currentVal>.8?'front':s.view,rotate:false}));
-   if(progress<1){animRef.current=requestAnimationFrame(step);}
-   else{animRef.current=null;setState(s=>({...s,explode:target,view:target>.8?'front':s.view,rotate:false}));}
+import { flushSync } from "react-dom";
+import { registerAtlasTools } from "./agent-tools";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  ArrowUpRight,
+  Boxes,
+  ChevronRight,
+  Focus,
+  Info,
+  Layers3,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Search,
+  X,
+} from "lucide-react";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+} from "@/components/ui/combobox";
+import AnatomyScene from "./scene";
+import {
+  AREAS,
+  DEFAULT_VISIBLE,
+  MODES,
+  REGIONS,
+  partIsVisible,
+  SYSTEMS,
+  EXPLANATIONS,
+  explanation,
+  type AreaId,
+  type Atlas,
+  type Concept,
+  type Mode,
+  type RegionId,
+  type SceneState,
+  type SystemId,
+  type View,
+} from "./anatomy";
+type AnatomySex = "male" | "female";
+type AnatomyModel = AnatomySex | "female-reference";
+const defaultVisible = (model: AnatomyModel): SystemId[] =>
+  model === "female-reference" ? [...DEFAULT_VISIBLE, "integumentary"] : [...DEFAULT_VISIBLE];
+const initial: SceneState = {
+  breastView: "tissue",
+  explode: 0,
+  visible: DEFAULT_VISIBLE,
+  selected: [],
+  isolate: false,
+  region: null,
+  area: null,
+  view: "three-quarter",
+  rotate: false,
+  reset: 0,
+};
+export default function AtlasViewer({
+  model,
+  onModelChange,
+}: {
+  model: AnatomyModel;
+  onModelChange: (model: AnatomyModel) => void;
+}) {
+  const sex: AnatomySex = model === "male" ? "male" : "female";
+  const reconstructed = model === "female";
+  const source = reconstructed
+    ? "BodyParts3D + HRA"
+    : sex === "female"
+      ? "Human Reference Atlas"
+      : "BodyParts3D";
+  const sourceUrl =
+    sex === "female"
+      ? "https://doi.org/10.48539/HBM352.BTSQ.586"
+      : "https://lifesciencedb.jp/bp3d/";
+  const detailTitle = useRef<HTMLHeadingElement>(null);
+  const preExplodeView = useRef<View | null>(null);
+  const [atlas, setAtlas] = useState<Atlas | null>(null),
+    [state, setState] = useState<SceneState>(() => ({
+      ...initial,
+      visible: defaultVisible(model),
+    })),
+    [progress, setProgress] = useState(0),
+    [error, setError] = useState(""),
+    [panel, setPanel] = useState<"layers" | "search" | null>(null),
+    [details, setDetails] = useState(false),
+    [about, setAbout] = useState(false),
+    [query, setQuery] = useState(""),
+    [chosen, setChosen] = useState<Concept | null>(null);
+  const [mode, setMode] = useState<Mode | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    setProgress(0);
+    setError("");
+    setAtlas(null);
+    setChosen(null);
+    setDetails(false);
+    setState({ ...initial, visible: defaultVisible(model) });
+    fetch(
+      reconstructed
+        ? "/models/atlas-female-reconstructed.json"
+        : sex === "female"
+          ? "/models/atlas-female.json"
+          : "/models/atlas.json",
+      { signal: abort.signal }
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error("The anatomy catalogue could not be loaded.");
+        return r.json();
+      })
+      .then((data) => {
+        if (!abort.signal.aborted) setAtlas(data as Atlas);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      });
+    return () => abort.abort();
+  }, [model]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (
+        e.key === "/" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        setPanel("search");
+        setDetails(false);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
+  const parts = useMemo(() => new Map(atlas?.parts.map((p) => [p.id, p])), [atlas]);
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        SYSTEMS.map((s) => [s.id, atlas?.parts.filter((p) => p.system === s.id).length ?? 0])
+      ),
+    [atlas]
+  );
+  const activeSystems = SYSTEMS.filter((s) => counts[s.id] > 0);
+  const adultSystems = activeSystems.filter((s) => s.id !== "pregnancy");
+  const organSystems = activeSystems
+    .filter((s) =>
+      ["cardiac", "respiratory", "digestive", "urinary", "endocrine", "reproductive"].includes(s.id)
+    )
+    .map((s) => s.id);
+  const matchesVisible = (ids: SystemId[]) =>
+    state.visible.length === ids.length && ids.every((id) => state.visible.includes(id));
+  const selectedParts = state.selected.map((id) => parts.get(id)).filter((p) => !!p),
+    selected = selectedParts[0],
+    system = SYSTEMS.find((s) => s.id === selected?.system);
+  const visibleCount = atlas?.parts.filter((p) => partIsVisible(p, state)).length ?? 0;
+  const chooseRegion = (id: RegionId | null) => {
+    setDetails(false);
+    setState((s) => ({ ...s, region: id, area: null, selected: [], isolate: false }));
   };
-  animRef.current=requestAnimationFrame(step);
- };
- const reset=()=>{if(animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;}setState(s=>({...initial,visible:defaultVisible(model),reset:s.reset+1}));setChosen(null);setDetails(false);setPanel(null);setMode(null);};
- const openPanel=(next:'layers'|'search')=>{setDetails(false);setPanel(p=>p===next?null:next);};
- return <main className="studio">
-  {atlas&&<AnatomyScene atlas={atlas} state={{...state,inspectorOpen:details&&selectedParts.length>0}} onSelect={choosePart} onProgress={n=>{setProgress(n);if(n===100)setError('');}} onError={setError}/>}
-  <div className="vignette"/>
-  <header className="identity"><div className="eyebrow"><span className="status-dot"/> INTERACTIVE ANATOMY</div><h1><a className="atlas-home-link" href="/" aria-label="Human Atlas: Chaz home">Human Atlas: Chaz</a><Badge variant="outline" className="edition">3D</Badge></h1><div className="identity-meta">{atlas?atlas.parts.length.toLocaleString():reconstructed?'2,243':sex==='female'?'888':'2,234'} modeled pieces <span>·</span> {source}</div><div className="anatomy-choice"><Select value={model} onValueChange={value=>{if(value==='male'||value==='female')onModelChange(value);}} items={[{value:'male',label:'Male anatomy'},{value:'female',label:'Female anatomy'}]}><SelectTrigger aria-label="Choose male or female anatomy"><SelectValue/></SelectTrigger><SelectContent className="anatomy-choice-menu"><SelectItem value="male">Male anatomy</SelectItem><SelectItem value="female">Female anatomy</SelectItem></SelectContent></Select></div>{sex==='female'&&<p className="coverage-note">{reconstructed?'Female study model · estimated proportions':'Partial skeleton & muscle coverage'}</p>}</header>
-  <nav className="top-actions" aria-label="Explorer panels"><Button variant="ghost" className={panel==='search'?'active':''} onClick={()=>openPanel('search')} aria-label="Search anatomy"><Search size={18}/><span>Find a structure</span><kbd>/</kbd></Button><Button variant="ghost" className="icon-button" aria-label="About this atlas" onClick={()=>{setDetails(false);setPanel(null);setAbout(true);}}><Info size={18}/></Button></nav>
-  <section className={`layers-panel glass ${panel==='layers'?'mobile-open':''}`} aria-label="Anatomical layers">
-   <div className="panel-heading"><span>Systems</span><Button variant="ghost" className="mobile-only icon-button" onClick={()=>setPanel(null)} aria-label="Close systems"><X size={18}/></Button><Badge variant="secondary" className="desktop-only small-number">{activeSystems.length}</Badge></div>
-   <div className="panel-scroll">
-    <div className="layer-presets"><Button variant="ghost" aria-pressed={matchesVisible(adultSystems.map(x=>x.id))} onClick={()=>setState(s=>({...s,selected:[],isolate:false,visible:adultSystems.map(x=>x.id),breastView:'tissue'}))}>All</Button><Button variant="ghost" aria-pressed={state.visible.length===1&&state.visible[0]==='skeletal'} onClick={()=>setState(s=>({...s,selected:[],isolate:false,visible:['skeletal']}))}>Skeleton</Button><Button variant="ghost" aria-pressed={matchesVisible(organSystems)} onClick={()=>setState(s=>({...s,selected:[],isolate:false,visible:organSystems}))}>Organs</Button></div>
-    <div className="mode-group">
-     <div className="mode-heading"><span>Study modes</span>{mode&&<Button variant="ghost" className="mode-exit" onClick={reset}>Exit</Button>}</div>
-     <div className="mode-list">{MODES.filter(modeReady).map(m=><Button variant="ghost" key={m.id} className={`mode-chip ${mode?.id===m.id?'active':''}`} aria-pressed={mode?.id===m.id} title={m.summary} onClick={()=>enterMode(m)}><span className="mode-name">{m.name}</span><span className="mode-size">{modeBytes[m.id]?`${(modeBytes[m.id]/1e6).toFixed(modeBytes[m.id]<1e6?2:1)} MB`:''}</span></Button>)}</div>
-     {mode&&<p className="mode-summary">{mode.summary}</p>}
-    </div>
-    {reconstructed&&<div className="breast-views" role="group" aria-label="Chest tissue view"><span>Chest detail</span><div>{([{id:'tissue',label:'Tissue'},{id:'cutaway',label:'Glands'},{id:'muscle',label:'Pectorals'}] as const).map(view=><Button key={view.id} variant="ghost" aria-pressed={state.breastView===view.id} onClick={()=>{setDetails(false);setState(s=>({...s,breastView:view.id,selected:[],isolate:false,visible:[...new Set([...s.visible.filter(id=>id!=='integumentary'&&(view.id!=='muscle'||id!=='mammary')),...(view.id==='muscle'?[]:['mammary' as const]),'muscular' as const])]}));}}>{view.label}</Button>)}</div><p>{state.breastView==='tissue'?'Exposed fat and connective-tissue detail.':state.breastView==='cutaway'?'Outer fat envelope removed to reveal glands and ducts.':'Breast tissues hidden to reveal the chest muscles.'}</p></div>}
-    <div className="panel-heading region-heading"><span>Regions</span><Button variant="ghost" className="region-body" aria-pressed={state.region===null} onClick={()=>chooseRegion(null)}>Body</Button></div>
-    <div className="layer-presets region-presets">{REGIONS.map(r=><Button variant="ghost" key={r.id} title={r.id==='arm'?'Arm, shoulder, and hand':r.name} aria-label={r.id==='arm'?'Arm, shoulder, and hand':r.name} aria-pressed={state.region===r.id} onClick={()=>chooseRegion(r.id)}>{r.name}</Button>)}</div>
-    {areas.length>0&&<><div className="panel-heading region-heading"><span>Areas</span></div>
-    <div className="layer-presets area-presets">{areas.map(a=><Button variant="ghost" key={a.id} title={a.id==='brachial-plexus'?'Scalenes, clavicle, and subclavian/axillary vessels — the plexus corridor. Named plexus trunks are not in this atlas.':a.name} aria-label={a.name} aria-pressed={state.area===a.id} onClick={()=>chooseArea(a.id)}>{a.name}</Button>)}</div></>}
-    <div className="system-list">{activeSystems.map(s=><div className={`system-row ${state.visible.includes(s.id)?'enabled':''}`} key={s.id}><Button variant="ghost" className="system-name" title={`Show only ${s.name.toLowerCase()}`} onClick={()=>{setMode(null);setState(v=>({...v,visible:[s.id],isolate:false,selected:[],breastView:s.id==='mammary'||s.id==='integumentary'?'tissue':v.breastView}));}}><span className="system-dot" style={{background:s.color}}/>{s.name}<span className="system-count">{counts[s.id]}</span></Button><Switch checked={state.visible.includes(s.id)} onCheckedChange={()=>toggle(s.id)} aria-label={`Show ${s.name.toLowerCase()}`} /></div>)}</div>
-   </div>
-   <div className="panel-foot"><span>{visibleCount.toLocaleString()} pieces visible</span><Button variant="ghost" onClick={()=>{setMode(null);setState(s=>({...s,visible:[],selected:[],isolate:false}));}}>Hide all</Button></div>
-  </section>
-  {panel==='search'&&<section className="search-panel glass" aria-label="Find anatomy"><div className="panel-heading"><span>Find a structure</span><Button variant="ghost" className="icon-button" onClick={()=>setPanel(null)} aria-label="Close search"><X size={18}/></Button></div><Combobox<Concept> items={results} value={null} onValueChange={value=>{if(value)choose(value);}} inputValue={query} onInputValueChange={setQuery} itemToStringLabel={c=>c.name} filter={null} open onOpenChange={open=>{if(!open)setPanel(null);}}><ComboboxInput autoFocus placeholder="Heart, femur, cranial nerve…" aria-label="Search named anatomical structures" showTrigger={false}/><ComboboxContent className="anatomy-search-results"><ComboboxEmpty>No structures match your search.</ComboboxEmpty><ComboboxList>{(c:Concept)=><ComboboxItem key={c.id} value={c}><span className="search-result-name">{c.name}</span><span className="small-number">{c.elements.length} {c.elements.length===1?'piece':'pieces'}</span></ComboboxItem>}</ComboboxList></ComboboxContent></Combobox><p className="search-note">{query?'Showing up to 80 matches. Refine your search to find smaller structures.':'Start with a major organ, or search every named structure.'}</p></section>}
-  <nav className="view-controls glass" aria-label="Camera controls">{(['three-quarter','front','side','back'] as View[]).map((v,i)=><Button variant="ghost" key={v} className={state.view===v?'active':''} aria-pressed={state.view===v} disabled={state.explode>.8&&v!=='front'} onClick={()=>setState(s=>({...s,view:v,reset:s.reset+1,rotate:false}))} title={`${v} view`} aria-label={`${v} view`}><span>{['¾','F','S','B'][i]}</span></Button>)}<i/><Button variant="ghost" disabled={state.explode>=.4} aria-label={state.rotate?'Pause rotation':'Rotate body'} title="Auto rotate" className={state.rotate?'active':''} onClick={()=>setState(s=>({...s,rotate:!s.rotate}))}>{state.rotate?<Pause size={17}/>:<RotateCw size={18}/>}</Button><Button variant="ghost" aria-label="Reset view and layers" title="Reset" onClick={reset}><RotateCcw size={17}/></Button></nav>
-  <div className="scene-caption"><span className="caption-line"/><span>{state.isolate?(chosen?.name??'SELECTED STRUCTURE'):state.explode>.95?'ANATOMICAL INVENTORY':state.explode>.05?'SEPARATED STRUCTURES':mode?`${mode.name.toUpperCase()} · STUDY MODE`:state.area?(AREAS.find(a=>a.id===state.area)?.name??'AREA').toUpperCase():state.region?(REGIONS.find(r=>r.id===state.region)?.name??'REGION').toUpperCase():sex==='female'?'ADULT HUMAN · FEMALE':'ADULT HUMAN · MALE'}</span><span className="caption-line"/></div>
-  <div className="bottom-dock glass" role="region" aria-label="Anatomy controls"><Button variant="ghost" className="mobile-only dock-layers" onClick={()=>openPanel('layers')} aria-label="Open system layers"><Layers3 size={18}/><span>Systems</span></Button><div className="mobile-only dock-divider" aria-hidden="true"/><div className="explode-control"><div className="explode-label"><label id="explode-label" className="explode-title"><Boxes size={14} className="explode-icon" /><span>Explode anatomy</span></label><output className="explode-badge" aria-live="polite">{Math.round(state.explode*100)}<span>%</span></output></div><div className="explode-slider-wrap"><Slider aria-labelledby="explode-label" min={0} max={100} step={1} value={[state.explode*100]} onValueChange={v=>{if(animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;}const val=(Array.isArray(v)?v[0]:v)/100;setState(s=>{const crossingUp=s.explode<=.8&&val>.8;const crossingDown=s.explode>.8&&val<=.8;if(crossingUp)preExplodeView.current=s.view;const view=crossingDown&&preExplodeView.current?preExplodeView.current:val>.8?'front':s.view;if(crossingDown)preExplodeView.current=null;return{...s,explode:val,view,rotate:false};});}}/></div><div className="slider-endpoints"><button type="button" className={`endpoint-btn ${state.explode<.1?'is-active':''}`} onClick={()=>setExplodeAnimated(0)} title="Fully assembled (0%)">Assembled</button><button type="button" className={`endpoint-btn ${Math.abs(state.explode-.5)<.12?'is-active':''}`} onClick={()=>setExplodeAnimated(0.5)} title="Expanded (50%)">Expanded</button><button type="button" className={`endpoint-btn ${state.explode>.9?'is-active':''}`} onClick={()=>setExplodeAnimated(1)} title="Fully separated (100%)">Separated</button></div></div><div className="dock-divider" aria-hidden="true"/><Button variant="ghost" className={`dock-reset ${state.explode>0||state.rotate||state.isolate?'has-active-state':''}`} onClick={reset} aria-label="Assemble and reset" title="Reset view and explosion"><RotateCcw size={17} className="dock-reset-icon"/><span>Reset</span></Button></div>
-  <footer className="studio-footer"><span>{state.explode>.8?'Drag to pan':'Drag to orbit'} <b>·</b> Pinch to zoom <b>·</b> Tap to inspect</span><Button variant="ghost" onClick={()=>{setDetails(false);setPanel(null);setAbout(true);}}>Source & credits <ArrowUpRight size={12}/></Button></footer>
-  {progress<100&&!error&&<div className="loading glass" role="status"><Activity size={18}/><div><strong>Preparing the anatomy</strong><span>{progress}% · Loading {atlas?.parts.length.toLocaleString()??(reconstructed?'2,243':sex==='female'?'888':'2,234')} pieces</span><div className="loading-track"><i style={{width:`${progress}%`}}/></div></div></div>}
-  {error&&<div className="loading glass error" role="alert"><p>{error}</p><Button variant="ghost" onClick={()=>location.reload()}>Reload viewer</Button></div>}
-  <Sheet open={details&&selectedParts.length>0} modal={false} disablePointerDismissal onOpenChange={open=>{setDetails(open);if(!open)setState(s=>({...s,selected:[],isolate:false}));}}><SheetContent initialFocus={detailTitle} className={`detail-sheet glass ${state.isolate?'is-isolated':''}`} showCloseButton={true}><div className="detail-header"><div className="detail-accent" style={{background:system?.color}}/><div className="eyebrow">{system?.name??'ANATOMY'}</div><SheetTitle ref={detailTitle} tabIndex={-1} className="structure-title">{chosen?.name}</SheetTitle></div><div className="detail-scroll" key={`${chosen?.id}-${state.isolate}`}><SheetDescription className="structure-description">{chosen&&selected?explanation(chosen.name,selected.system,sex):''}</SheetDescription>{chosen&&!EXPLANATIONS[chosen.name.toLowerCase()]&&<span className="context-note">System overview · structure identified from source anatomy</span>}<div className="structure-meta"><span>Atlas reference<strong>{selectedParts.length===1?(selected?.provenance?.sourceId??chosen?.id):chosen?.id}</strong></span><span>Selected pieces<strong>{state.selected.length.toLocaleString()}</strong></span></div>{selectedParts.some(p=>p.provenance?.source==='BodyParts3D 4.0')&&reconstructed&&<p className="context-note fitted-note">Shared BodyParts3D reference geometry, reshaped by the estimated female body morph of this study model.</p>}{reconstructed&&selectedParts.some(p=>/^VH_F_fat_[LR]$/.test(p.id))&&<p className="context-note fitted-note">The breast envelope is an illustrative contour representing adipose tissue, not skin or muscle. Its shape and lobulated surface detail are illustrative; they are not measured HRA tissue architecture or muscle fibers.</p>}{reconstructed&&selectedParts.some(p=>p.provenance?.source==='HRA united-female v1.5'&&!/^VH_F_fat_[LR]$/.test(p.id))&&<p className="context-note fitted-note">Female HRA reference geometry fitted to this body and reshaped with it. Placement is experimental and has not been anatomically validated.</p>}{selectedParts.length>1&&<div className="member-list"><h3>Included structures</h3>{selectedParts.slice(0,50).map(p=><Button variant="ghost" key={p.id} onClick={()=>choosePart(p.id)}><span>{p.name}</span><ChevronRight size={14}/></Button>)}{selectedParts.length>50&&<p>And {selectedParts.length-50} more modeled pieces.</p>}</div>}<a className="source-link" href={selected?.provenance?.source==='BodyParts3D 4.0'?'https://lifesciencedb.jp/bp3d/':sourceUrl} target="_blank" rel="noreferrer">View anatomical source <ArrowUpRight size={14}/></a></div><div className="detail-actions"><Button className={`primary-action ${state.isolate?'active':''}`} onClick={()=>setState(s=>({...s,isolate:!s.isolate,explode:0}))}><Focus size={18}/>{state.isolate?'Show surrounding anatomy':'Isolate structure'}<ChevronRight size={16}/></Button><Button variant="ghost" className="secondary-action" onClick={()=>{setState(s=>({...s,selected:[],isolate:false}));setDetails(false);}}>Clear selection</Button></div></SheetContent></Sheet>
-  <Sheet open={about} onOpenChange={setAbout}><SheetContent className="about-sheet glass"><div className="eyebrow">SOURCE & SCOPE</div><SheetTitle className="structure-title">A body, revealed.</SheetTitle><SheetDescription>Explore a male reference atlas and an adapted female study model.</SheetDescription><div className="about-copy"><p><strong>Male · BodyParts3D</strong><br/>2,234 individual meshes and 3,432 named concepts from an adult male reference anatomy.</p><p><strong>Female · Study model</strong><br/>Built from the BodyParts3D skeleton, muscles, and shared organs with male-specific anatomy omitted. The HRA female pelvis replaces the male pelvis, 38 female reproductive structures and 16 breast-related structures from HRA are adapted into the body, and the assembly is reshaped toward estimated female proportions. The overall body adjustment is shared across structures; selected glute tissues have an additional local contour adjustment. The two outer breast envelopes are regenerated illustrative contours. Proportions are estimates and organ placement is experimental. Pelvic-floor muscles, the female urethra, and several core muscles do not yet have separately identified representations. This is not a validated female anatomical atlas.</p><p><strong>Female source · Human Reference Atlas</strong><br/>The HRA collection supplies selected female organs, pelvis and breast-related structures. The source collection has partial skeleton and muscle coverage and is retained for reconstruction; it is not a separate viewer option.</p><p>This reference does not contain every human structure or variation. Named concepts can contain multiple pieces; each source mesh is rendered once.</p><p>The viewer currently shows static anatomy. Camera rotation and separated-piece views do not simulate joint motion or muscle recruitment. Colors distinguish structures and tissue types; they do not measure activation. The geometry is simplified for the web, and short explanations provide general educational context. This is an anatomical reference, not a diagnostic or surgical tool.</p><h3>Female source</h3><p>Kristen Browne and Heidi Schlehlein, Human Reference Atlas / HuBMAP, 3D Reference Organ Set for Female v1.5 (2023). CC BY 4.0. Geometry adapted for this viewer.</p><a href="https://doi.org/10.48539/HBM352.BTSQ.586" target="_blank" rel="noreferrer">Female reference collection <ArrowUpRight size={14}/></a><h3>Male source</h3><p>BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International.</p><a href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html" target="_blank" rel="noreferrer">Dataset license <ArrowUpRight size={14}/></a><a href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html" target="_blank" rel="noreferrer">Original geometry & metadata <ArrowUpRight size={14}/></a><a href="https://academic.oup.com/nar/article/37/suppl_1/D782/1000752" target="_blank" rel="noreferrer">Read the source publication <ArrowUpRight size={14}/></a></div></SheetContent></Sheet>
- </main>;
+  const chooseArea = (id: AreaId) => {
+    setDetails(false);
+    setState((s) => ({ ...s, area: s.area === id ? null : id, selected: [], isolate: false }));
+  };
+  const areas = AREAS.filter((a) => !state.region || a.regions.includes(state.region));
+  const results = useMemo(() => {
+    if (!atlas) return [];
+    const term = query.toLowerCase().trim();
+    if (!term)
+      return [
+        "heart",
+        "brain",
+        "liver",
+        "stomach",
+        "spleen",
+        "pancreas",
+        "urinary bladder",
+        "trachea",
+      ]
+        .map((name) => atlas.concepts.find((c) => c.name.toLowerCase() === name))
+        .filter((x): x is Concept => !!x);
+    return atlas.concepts
+      .filter((c) => c.name.toLowerCase().includes(term) || c.id.toLowerCase().includes(term))
+      .sort((a, b) => a.name.length - b.name.length)
+      .slice(0, 80);
+  }, [atlas, query]);
+  const elementsFor = (c: Concept, visible: SystemId[]) => {
+    const shown = c.elements.filter((id) => {
+      const p = parts.get(id);
+      return p && visible.includes(p.system);
+    });
+    return shown.length ? shown : c.elements;
+  };
+  const choose = (c: Concept) => {
+    setChosen(c);
+    setState((s) => ({ ...s, selected: elementsFor(c, s.visible), isolate: false, rotate: false }));
+    setDetails(true);
+    setPanel(null);
+  };
+  useEffect(() => {
+    if (!atlas) return;
+    return registerAtlasTools(atlas, (c) => flushSync(() => choose(c)));
+  }, [atlas]);
+  const choosePart = (id: string) => {
+    const p = parts.get(id);
+    if (!p) return;
+    setChosen({ id: p.conceptId, name: p.name, elements: [id] });
+    setState((s) => ({ ...s, selected: [id], isolate: false, rotate: false }));
+    setDetails(true);
+    setPanel(null);
+  };
+  const modeBytes = useMemo(
+    () =>
+      Object.fromEntries(
+        MODES.map((m) => [
+          m.id,
+          (atlas?.chunks ?? [])
+            .filter((c) => c.system && m.systems.includes(c.system))
+            .reduce((sum, c) => sum + (c.gzipBytes ?? c.bytes), 0),
+        ])
+      ),
+    [atlas]
+  );
+  const modeReady = (m: Mode) => m.systems.every((id) => counts[id] > 0);
+  const enterMode = (m: Mode) => {
+    const concept = atlas?.concepts.find((c) => c.id === m.focus) ?? null;
+    setMode(m);
+    setPanel(null);
+    setChosen(concept);
+    setState((s) => ({
+      ...s,
+      visible: m.systems,
+      selected: concept ? elementsFor(concept, m.systems) : [],
+      isolate: false,
+      explode: 0,
+      rotate: false,
+      view: "three-quarter",
+      reset: s.reset + 1,
+    }));
+    setDetails(!!concept);
+  };
+  const toggle = (id: SystemId) => {
+    setDetails(false);
+    setMode(null);
+    setState((s) => ({
+      ...s,
+      selected: [],
+      isolate: false,
+      breastView:
+        (id === "mammary" || id === "integumentary") && !s.visible.includes(id)
+          ? "tissue"
+          : s.breastView,
+      visible: s.visible.includes(id) ? s.visible.filter((x) => x !== id) : [...s.visible, id],
+    }));
+  };
+  const animRef = useRef<number | null>(null);
+  const setExplodeAnimated = (target: number) => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    const start = state.explode;
+    if (Math.abs(start - target) < 0.005) {
+      setState((s) => ({
+        ...s,
+        explode: target,
+        view: target > 0.8 ? "front" : s.view,
+        rotate: false,
+      }));
+      return;
+    }
+    const startTime = performance.now(),
+      duration = 380;
+    const step = (now: number) => {
+      const elapsed = now - startTime,
+        progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const currentVal = start + (target - start) * eased;
+      setState((s) => ({
+        ...s,
+        explode: currentVal,
+        view: currentVal > 0.8 ? "front" : s.view,
+        rotate: false,
+      }));
+      if (progress < 1) {
+        animRef.current = requestAnimationFrame(step);
+      } else {
+        animRef.current = null;
+        setState((s) => ({
+          ...s,
+          explode: target,
+          view: target > 0.8 ? "front" : s.view,
+          rotate: false,
+        }));
+      }
+    };
+    animRef.current = requestAnimationFrame(step);
+  };
+  const reset = () => {
+    if (animRef.current) {
+      cancelAnimationFrame(animRef.current);
+      animRef.current = null;
+    }
+    setState((s) => ({ ...initial, visible: defaultVisible(model), reset: s.reset + 1 }));
+    setChosen(null);
+    setDetails(false);
+    setPanel(null);
+    setMode(null);
+  };
+  const openPanel = (next: "layers" | "search") => {
+    setDetails(false);
+    setPanel((p) => (p === next ? null : next));
+  };
+  return (
+    <main className="studio">
+      {atlas && (
+        <AnatomyScene
+          atlas={atlas}
+          state={{ ...state, inspectorOpen: details && selectedParts.length > 0 }}
+          onSelect={choosePart}
+          onProgress={(n) => {
+            setProgress(n);
+            if (n === 100) setError("");
+          }}
+          onError={setError}
+        />
+      )}
+      <div className="vignette" />
+      <header className="identity">
+        <div className="eyebrow">
+          <span className="status-dot" /> INTERACTIVE ANATOMY
+        </div>
+        <h1>
+          <a className="atlas-home-link" href="/" aria-label="Human Atlas: Chaz home">
+            Human Atlas: Chaz
+          </a>
+          <Badge variant="outline" className="edition">
+            3D
+          </Badge>
+        </h1>
+        <div className="identity-meta">
+          {atlas
+            ? atlas.parts.length.toLocaleString()
+            : reconstructed
+              ? "2,243"
+              : sex === "female"
+                ? "888"
+                : "2,234"}{" "}
+          modeled pieces <span>·</span> {source}
+        </div>
+        <div className="anatomy-choice">
+          <Select
+            value={model}
+            onValueChange={(value) => {
+              if (value === "male" || value === "female") onModelChange(value);
+            }}
+            items={[
+              { value: "male", label: "Male anatomy" },
+              { value: "female", label: "Female anatomy" },
+            ]}
+          >
+            <SelectTrigger aria-label="Choose male or female anatomy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="anatomy-choice-menu">
+              <SelectItem value="male">Male anatomy</SelectItem>
+              <SelectItem value="female">Female anatomy</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {sex === "female" && (
+          <p className="coverage-note">
+            {reconstructed
+              ? "Female study model · estimated proportions"
+              : "Partial skeleton & muscle coverage"}
+          </p>
+        )}
+      </header>
+      <nav className="top-actions" aria-label="Explorer panels">
+        <Button
+          variant="ghost"
+          className={panel === "search" ? "active" : ""}
+          onClick={() => openPanel("search")}
+          aria-label="Search anatomy"
+        >
+          <Search size={18} />
+          <span>Find a structure</span>
+          <kbd>/</kbd>
+        </Button>
+        <Button
+          variant="ghost"
+          className="icon-button"
+          aria-label="About this atlas"
+          onClick={() => {
+            setDetails(false);
+            setPanel(null);
+            setAbout(true);
+          }}
+        >
+          <Info size={18} />
+        </Button>
+      </nav>
+      <section
+        className={`layers-panel glass ${panel === "layers" ? "mobile-open" : ""}`}
+        aria-label="Anatomical layers"
+      >
+        <div className="panel-heading">
+          <span>Systems</span>
+          <Button
+            variant="ghost"
+            className="mobile-only icon-button"
+            onClick={() => setPanel(null)}
+            aria-label="Close systems"
+          >
+            <X size={18} />
+          </Button>
+          <Badge variant="secondary" className="desktop-only small-number">
+            {activeSystems.length}
+          </Badge>
+        </div>
+        <div className="panel-scroll">
+          <div className="layer-presets">
+            <Button
+              variant="ghost"
+              aria-pressed={matchesVisible(adultSystems.map((x) => x.id))}
+              onClick={() =>
+                setState((s) => ({
+                  ...s,
+                  selected: [],
+                  isolate: false,
+                  visible: adultSystems.map((x) => x.id),
+                  breastView: "tissue",
+                }))
+              }
+            >
+              All
+            </Button>
+            <Button
+              variant="ghost"
+              aria-pressed={state.visible.length === 1 && state.visible[0] === "skeletal"}
+              onClick={() =>
+                setState((s) => ({ ...s, selected: [], isolate: false, visible: ["skeletal"] }))
+              }
+            >
+              Skeleton
+            </Button>
+            <Button
+              variant="ghost"
+              aria-pressed={matchesVisible(organSystems)}
+              onClick={() =>
+                setState((s) => ({ ...s, selected: [], isolate: false, visible: organSystems }))
+              }
+            >
+              Organs
+            </Button>
+          </div>
+          <div className="mode-group">
+            <div className="mode-heading">
+              <span>Study modes</span>
+              {mode && (
+                <Button variant="ghost" className="mode-exit" onClick={reset}>
+                  Exit
+                </Button>
+              )}
+            </div>
+            <div className="mode-list">
+              {MODES.filter(modeReady).map((m) => (
+                <Button
+                  variant="ghost"
+                  key={m.id}
+                  className={`mode-chip ${mode?.id === m.id ? "active" : ""}`}
+                  aria-pressed={mode?.id === m.id}
+                  title={m.summary}
+                  onClick={() => enterMode(m)}
+                >
+                  <span className="mode-name">{m.name}</span>
+                  <span className="mode-size">
+                    {modeBytes[m.id]
+                      ? `${(modeBytes[m.id] / 1e6).toFixed(modeBytes[m.id] < 1e6 ? 2 : 1)} MB`
+                      : ""}
+                  </span>
+                </Button>
+              ))}
+            </div>
+            {mode && <p className="mode-summary">{mode.summary}</p>}
+          </div>
+          {reconstructed && (
+            <div className="breast-views" role="group" aria-label="Chest tissue view">
+              <span>Chest detail</span>
+              <div>
+                {(
+                  [
+                    { id: "tissue", label: "Tissue" },
+                    { id: "cutaway", label: "Glands" },
+                    { id: "muscle", label: "Pectorals" },
+                  ] as const
+                ).map((view) => (
+                  <Button
+                    key={view.id}
+                    variant="ghost"
+                    aria-pressed={state.breastView === view.id}
+                    onClick={() => {
+                      setDetails(false);
+                      setState((s) => ({
+                        ...s,
+                        breastView: view.id,
+                        selected: [],
+                        isolate: false,
+                        visible: [
+                          ...new Set([
+                            ...s.visible.filter(
+                              (id) =>
+                                id !== "integumentary" && (view.id !== "muscle" || id !== "mammary")
+                            ),
+                            ...(view.id === "muscle" ? [] : ["mammary" as const]),
+                            "muscular" as const,
+                          ]),
+                        ],
+                      }));
+                    }}
+                  >
+                    {view.label}
+                  </Button>
+                ))}
+              </div>
+              <p>
+                {state.breastView === "tissue"
+                  ? "Exposed fat and connective-tissue detail."
+                  : state.breastView === "cutaway"
+                    ? "Outer fat envelope removed to reveal glands and ducts."
+                    : "Breast tissues hidden to reveal the chest muscles."}
+              </p>
+            </div>
+          )}
+          <div className="panel-heading region-heading">
+            <span>Regions</span>
+            <Button
+              variant="ghost"
+              className="region-body"
+              aria-pressed={state.region === null}
+              onClick={() => chooseRegion(null)}
+            >
+              Body
+            </Button>
+          </div>
+          <div className="layer-presets region-presets">
+            {REGIONS.map((r) => (
+              <Button
+                variant="ghost"
+                key={r.id}
+                title={r.id === "arm" ? "Arm, shoulder, and hand" : r.name}
+                aria-label={r.id === "arm" ? "Arm, shoulder, and hand" : r.name}
+                aria-pressed={state.region === r.id}
+                onClick={() => chooseRegion(r.id)}
+              >
+                {r.name}
+              </Button>
+            ))}
+          </div>
+          {areas.length > 0 && (
+            <>
+              <div className="panel-heading region-heading">
+                <span>Areas</span>
+              </div>
+              <div className="layer-presets area-presets">
+                {areas.map((a) => (
+                  <Button
+                    variant="ghost"
+                    key={a.id}
+                    title={
+                      a.id === "brachial-plexus"
+                        ? "Scalenes, clavicle, and subclavian/axillary vessels — the plexus corridor. Named plexus trunks are not in this atlas."
+                        : a.name
+                    }
+                    aria-label={a.name}
+                    aria-pressed={state.area === a.id}
+                    onClick={() => chooseArea(a.id)}
+                  >
+                    {a.name}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="system-list">
+            {activeSystems.map((s) => (
+              <div
+                className={`system-row ${state.visible.includes(s.id) ? "enabled" : ""}`}
+                key={s.id}
+              >
+                <Button
+                  variant="ghost"
+                  className="system-name"
+                  title={`Show only ${s.name.toLowerCase()}`}
+                  onClick={() => {
+                    setMode(null);
+                    setState((v) => ({
+                      ...v,
+                      visible: [s.id],
+                      isolate: false,
+                      selected: [],
+                      breastView:
+                        s.id === "mammary" || s.id === "integumentary" ? "tissue" : v.breastView,
+                    }));
+                  }}
+                >
+                  <span className="system-dot" style={{ background: s.color }} />
+                  {s.name}
+                  <span className="system-count">{counts[s.id]}</span>
+                </Button>
+                <Switch
+                  checked={state.visible.includes(s.id)}
+                  onCheckedChange={() => toggle(s.id)}
+                  aria-label={`Show ${s.name.toLowerCase()}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel-foot">
+          <span>{visibleCount.toLocaleString()} pieces visible</span>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setMode(null);
+              setState((s) => ({ ...s, visible: [], selected: [], isolate: false }));
+            }}
+          >
+            Hide all
+          </Button>
+        </div>
+      </section>
+      {panel === "search" && (
+        <section className="search-panel glass" aria-label="Find anatomy">
+          <div className="panel-heading">
+            <span>Find a structure</span>
+            <Button
+              variant="ghost"
+              className="icon-button"
+              onClick={() => setPanel(null)}
+              aria-label="Close search"
+            >
+              <X size={18} />
+            </Button>
+          </div>
+          <Combobox<Concept>
+            items={results}
+            value={null}
+            onValueChange={(value) => {
+              if (value) choose(value);
+            }}
+            inputValue={query}
+            onInputValueChange={setQuery}
+            itemToStringLabel={(c) => c.name}
+            filter={null}
+            open
+            onOpenChange={(open) => {
+              if (!open) setPanel(null);
+            }}
+          >
+            <ComboboxInput
+              autoFocus
+              placeholder="Heart, femur, cranial nerve…"
+              aria-label="Search named anatomical structures"
+              showTrigger={false}
+            />
+            <ComboboxContent className="anatomy-search-results">
+              <ComboboxEmpty>No structures match your search.</ComboboxEmpty>
+              <ComboboxList>
+                {(c: Concept) => (
+                  <ComboboxItem key={c.id} value={c}>
+                    <span className="search-result-name">{c.name}</span>
+                    <span className="small-number">
+                      {c.elements.length} {c.elements.length === 1 ? "piece" : "pieces"}
+                    </span>
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+          <p className="search-note">
+            {query
+              ? "Showing up to 80 matches. Refine your search to find smaller structures."
+              : "Start with a major organ, or search every named structure."}
+          </p>
+        </section>
+      )}
+      <nav className="view-controls glass" aria-label="Camera controls">
+        {(["three-quarter", "front", "side", "back"] as View[]).map((v, i) => (
+          <Button
+            variant="ghost"
+            key={v}
+            className={state.view === v ? "active" : ""}
+            aria-pressed={state.view === v}
+            disabled={state.explode > 0.8 && v !== "front"}
+            onClick={() => setState((s) => ({ ...s, view: v, reset: s.reset + 1, rotate: false }))}
+            title={`${v} view`}
+            aria-label={`${v} view`}
+          >
+            <span>{["¾", "F", "S", "B"][i]}</span>
+          </Button>
+        ))}
+        <i />
+        <Button
+          variant="ghost"
+          disabled={state.explode >= 0.4}
+          aria-label={state.rotate ? "Pause rotation" : "Rotate body"}
+          title="Auto rotate"
+          className={state.rotate ? "active" : ""}
+          onClick={() => setState((s) => ({ ...s, rotate: !s.rotate }))}
+        >
+          {state.rotate ? <Pause size={17} /> : <RotateCw size={18} />}
+        </Button>
+        <Button variant="ghost" aria-label="Reset view and layers" title="Reset" onClick={reset}>
+          <RotateCcw size={17} />
+        </Button>
+      </nav>
+      <div className="scene-caption">
+        <span className="caption-line" />
+        <span>
+          {state.isolate
+            ? (chosen?.name ?? "SELECTED STRUCTURE")
+            : state.explode > 0.95
+              ? "ANATOMICAL INVENTORY"
+              : state.explode > 0.05
+                ? "SEPARATED STRUCTURES"
+                : mode
+                  ? `${mode.name.toUpperCase()} · STUDY MODE`
+                  : state.area
+                    ? (AREAS.find((a) => a.id === state.area)?.name ?? "AREA").toUpperCase()
+                    : state.region
+                      ? (REGIONS.find((r) => r.id === state.region)?.name ?? "REGION").toUpperCase()
+                      : sex === "female"
+                        ? "ADULT HUMAN · FEMALE"
+                        : "ADULT HUMAN · MALE"}
+        </span>
+        <span className="caption-line" />
+      </div>
+      <div className="bottom-dock glass" role="region" aria-label="Anatomy controls">
+        <Button
+          variant="ghost"
+          className="mobile-only dock-layers"
+          onClick={() => openPanel("layers")}
+          aria-label="Open system layers"
+        >
+          <Layers3 size={18} />
+          <span>Systems</span>
+        </Button>
+        <div className="mobile-only dock-divider" aria-hidden="true" />
+        <div className="explode-control">
+          <div className="explode-label">
+            <label id="explode-label" className="explode-title">
+              <Boxes size={14} className="explode-icon" />
+              <span>Explode anatomy</span>
+            </label>
+            <output className="explode-badge" aria-live="polite">
+              {Math.round(state.explode * 100)}
+              <span>%</span>
+            </output>
+          </div>
+          <div className="explode-slider-wrap">
+            <Slider
+              aria-labelledby="explode-label"
+              min={0}
+              max={100}
+              step={1}
+              value={[state.explode * 100]}
+              onValueChange={(v) => {
+                if (animRef.current) {
+                  cancelAnimationFrame(animRef.current);
+                  animRef.current = null;
+                }
+                const val = (Array.isArray(v) ? v[0] : v) / 100;
+                setState((s) => {
+                  const crossingUp = s.explode <= 0.8 && val > 0.8;
+                  const crossingDown = s.explode > 0.8 && val <= 0.8;
+                  if (crossingUp) preExplodeView.current = s.view;
+                  const view =
+                    crossingDown && preExplodeView.current
+                      ? preExplodeView.current
+                      : val > 0.8
+                        ? "front"
+                        : s.view;
+                  if (crossingDown) preExplodeView.current = null;
+                  return { ...s, explode: val, view, rotate: false };
+                });
+              }}
+            />
+          </div>
+          <div className="slider-endpoints">
+            <button
+              type="button"
+              className={`endpoint-btn ${state.explode < 0.1 ? "is-active" : ""}`}
+              onClick={() => setExplodeAnimated(0)}
+              title="Fully assembled (0%)"
+            >
+              Assembled
+            </button>
+            <button
+              type="button"
+              className={`endpoint-btn ${Math.abs(state.explode - 0.5) < 0.12 ? "is-active" : ""}`}
+              onClick={() => setExplodeAnimated(0.5)}
+              title="Expanded (50%)"
+            >
+              Expanded
+            </button>
+            <button
+              type="button"
+              className={`endpoint-btn ${state.explode > 0.9 ? "is-active" : ""}`}
+              onClick={() => setExplodeAnimated(1)}
+              title="Fully separated (100%)"
+            >
+              Separated
+            </button>
+          </div>
+        </div>
+        <div className="dock-divider" aria-hidden="true" />
+        <Button
+          variant="ghost"
+          className={`dock-reset ${state.explode > 0 || state.rotate || state.isolate ? "has-active-state" : ""}`}
+          onClick={reset}
+          aria-label="Assemble and reset"
+          title="Reset view and explosion"
+        >
+          <RotateCcw size={17} className="dock-reset-icon" />
+          <span>Reset</span>
+        </Button>
+      </div>
+      <footer className="studio-footer">
+        <span>
+          {state.explode > 0.8 ? "Drag to pan" : "Drag to orbit"} <b>·</b> Pinch to zoom <b>·</b>{" "}
+          Tap to inspect
+        </span>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setDetails(false);
+            setPanel(null);
+            setAbout(true);
+          }}
+        >
+          Source & credits <ArrowUpRight size={12} />
+        </Button>
+      </footer>
+      {progress < 100 && !error && (
+        <div className="loading glass" role="status">
+          <Activity size={18} />
+          <div>
+            <strong>Preparing the anatomy</strong>
+            <span>
+              {progress}% · Loading{" "}
+              {atlas?.parts.length.toLocaleString() ??
+                (reconstructed ? "2,243" : sex === "female" ? "888" : "2,234")}{" "}
+              pieces
+            </span>
+            <div className="loading-track">
+              <i style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="loading glass error" role="alert">
+          <p>{error}</p>
+          <Button variant="ghost" onClick={() => location.reload()}>
+            Reload viewer
+          </Button>
+        </div>
+      )}
+      <Sheet
+        open={details && selectedParts.length > 0}
+        modal={false}
+        disablePointerDismissal
+        onOpenChange={(open) => {
+          setDetails(open);
+          if (!open) setState((s) => ({ ...s, selected: [], isolate: false }));
+        }}
+      >
+        <SheetContent
+          initialFocus={detailTitle}
+          className={`detail-sheet glass ${state.isolate ? "is-isolated" : ""}`}
+          showCloseButton={true}
+        >
+          <div className="detail-header">
+            <div className="detail-accent" style={{ background: system?.color }} />
+            <div className="eyebrow">{system?.name ?? "ANATOMY"}</div>
+            <SheetTitle ref={detailTitle} tabIndex={-1} className="structure-title">
+              {chosen?.name}
+            </SheetTitle>
+          </div>
+          <div className="detail-scroll" key={`${chosen?.id}-${state.isolate}`}>
+            <SheetDescription className="structure-description">
+              {chosen && selected ? explanation(chosen.name, selected.system, sex) : ""}
+            </SheetDescription>
+            {chosen && !EXPLANATIONS[chosen.name.toLowerCase()] && (
+              <span className="context-note">
+                System overview · structure identified from source anatomy
+              </span>
+            )}
+            <div className="structure-meta">
+              <span>
+                Atlas reference
+                <strong>
+                  {selectedParts.length === 1
+                    ? (selected?.provenance?.sourceId ?? chosen?.id)
+                    : chosen?.id}
+                </strong>
+              </span>
+              <span>
+                Selected pieces<strong>{state.selected.length.toLocaleString()}</strong>
+              </span>
+            </div>
+            {selectedParts.some((p) => p.provenance?.source === "BodyParts3D 4.0") &&
+              reconstructed && (
+                <p className="context-note fitted-note">
+                  Shared BodyParts3D reference geometry, reshaped by the estimated female body morph
+                  of this study model.
+                </p>
+              )}
+            {reconstructed && selectedParts.some((p) => /^VH_F_fat_[LR]$/.test(p.id)) && (
+              <p className="context-note fitted-note">
+                The breast envelope is an illustrative contour representing adipose tissue, not skin
+                or muscle. Its shape and lobulated surface detail are illustrative; they are not
+                measured HRA tissue architecture or muscle fibers.
+              </p>
+            )}
+            {reconstructed &&
+              selectedParts.some(
+                (p) =>
+                  p.provenance?.source === "HRA united-female v1.5" && !/^VH_F_fat_[LR]$/.test(p.id)
+              ) && (
+                <p className="context-note fitted-note">
+                  Female HRA reference geometry fitted to this body and reshaped with it. Placement
+                  is experimental and has not been anatomically validated.
+                </p>
+              )}
+            {selectedParts.length > 1 && (
+              <div className="member-list">
+                <h3>Included structures</h3>
+                {selectedParts.slice(0, 50).map((p) => (
+                  <Button variant="ghost" key={p.id} onClick={() => choosePart(p.id)}>
+                    <span>{p.name}</span>
+                    <ChevronRight size={14} />
+                  </Button>
+                ))}
+                {selectedParts.length > 50 && (
+                  <p>And {selectedParts.length - 50} more modeled pieces.</p>
+                )}
+              </div>
+            )}
+            <a
+              className="source-link"
+              href={
+                selected?.provenance?.source === "BodyParts3D 4.0"
+                  ? "https://lifesciencedb.jp/bp3d/"
+                  : sourceUrl
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              View anatomical source <ArrowUpRight size={14} />
+            </a>
+          </div>
+          <div className="detail-actions">
+            <Button
+              className={`primary-action ${state.isolate ? "active" : ""}`}
+              onClick={() => setState((s) => ({ ...s, isolate: !s.isolate, explode: 0 }))}
+            >
+              <Focus size={18} />
+              {state.isolate ? "Show surrounding anatomy" : "Isolate structure"}
+              <ChevronRight size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              className="secondary-action"
+              onClick={() => {
+                setState((s) => ({ ...s, selected: [], isolate: false }));
+                setDetails(false);
+              }}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+      <Sheet open={about} onOpenChange={setAbout}>
+        <SheetContent className="about-sheet glass">
+          <div className="eyebrow">SOURCE & SCOPE</div>
+          <SheetTitle className="structure-title">A body, revealed.</SheetTitle>
+          <SheetDescription>
+            Explore a male reference atlas and an adapted female study model.
+          </SheetDescription>
+          <div className="about-copy">
+            <p>
+              <strong>Male · BodyParts3D</strong>
+              <br />
+              2,234 individual meshes and 3,432 named concepts from an adult male reference anatomy.
+            </p>
+            <p>
+              <strong>Female · Study model</strong>
+              <br />
+              Built from the BodyParts3D skeleton, muscles, and shared organs with male-specific
+              anatomy omitted. The HRA female pelvis replaces the male pelvis, 38 female
+              reproductive structures and 16 breast-related structures from HRA are adapted into the
+              body, and the assembly is reshaped toward estimated female proportions. The overall
+              body adjustment is shared across structures; selected glute tissues have an additional
+              local contour adjustment. The two outer breast envelopes are regenerated illustrative
+              contours. Proportions are estimates and organ placement is experimental. Pelvic-floor
+              muscles, the female urethra, and several core muscles do not yet have separately
+              identified representations. This is not a validated female anatomical atlas.
+            </p>
+            <p>
+              <strong>Female source · Human Reference Atlas</strong>
+              <br />
+              The HRA collection supplies selected female organs, pelvis and breast-related
+              structures. The source collection has partial skeleton and muscle coverage and is
+              retained for reconstruction; it is not a separate viewer option.
+            </p>
+            <p>
+              This reference does not contain every human structure or variation. Named concepts can
+              contain multiple pieces; each source mesh is rendered once.
+            </p>
+            <p>
+              The viewer currently shows static anatomy. Camera rotation and separated-piece views
+              do not simulate joint motion or muscle recruitment. Colors distinguish structures and
+              tissue types; they do not measure activation. The geometry is simplified for the web,
+              and short explanations provide general educational context. This is an anatomical
+              reference, not a diagnostic or surgical tool.
+            </p>
+            <h3>Female source</h3>
+            <p>
+              Kristen Browne and Heidi Schlehlein, Human Reference Atlas / HuBMAP, 3D Reference
+              Organ Set for Female v1.5 (2023). CC BY 4.0. Geometry adapted for this viewer.
+            </p>
+            <a href="https://doi.org/10.48539/HBM352.BTSQ.586" target="_blank" rel="noreferrer">
+              Female reference collection <ArrowUpRight size={14} />
+            </a>
+            <h3>Male source</h3>
+            <p>
+              BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0
+              International.
+            </p>
+            <a
+              href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Dataset license <ArrowUpRight size={14} />
+            </a>
+            <a
+              href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Original geometry & metadata <ArrowUpRight size={14} />
+            </a>
+            <a
+              href="https://academic.oup.com/nar/article/37/suppl_1/D782/1000752"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Read the source publication <ArrowUpRight size={14} />
+            </a>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </main>
+  );
 }
