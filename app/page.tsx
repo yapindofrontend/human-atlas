@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowUpRight,
   Boxes,
+  ChevronLeft,
   ChevronRight,
   Focus,
   Info,
@@ -64,6 +65,7 @@ const initial: SceneState = {
   visible: DEFAULT_VISIBLE,
   selected: [],
   isolate: false,
+  isolated: [],
   region: null,
   area: null,
   view: "three-quarter",
@@ -89,6 +91,7 @@ export default function AtlasViewer({
       ? "https://doi.org/10.48539/HBM352.BTSQ.586"
       : "https://lifesciencedb.jp/bp3d/";
   const detailTitle = useRef<HTMLHeadingElement>(null);
+  const aboutTitle = useRef<HTMLHeadingElement>(null);
   const preExplodeView = useRef<View | null>(null);
   const [atlas, setAtlas] = useState<Atlas | null>(null),
     [state, setState] = useState<SceneState>(() => ({
@@ -103,6 +106,7 @@ export default function AtlasViewer({
     [query, setQuery] = useState(""),
     [chosen, setChosen] = useState<Concept | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
+  const [isolatedConcept, setIsolatedConcept] = useState<Concept | null>(null);
   useEffect(() => {
     const abort = new AbortController();
     setProgress(0);
@@ -163,6 +167,10 @@ export default function AtlasViewer({
     .map((s) => s.id);
   const matchesVisible = (ids: SystemId[]) =>
     state.visible.length === ids.length && ids.every((id) => state.visible.includes(id));
+  const isolatedIsSelection =
+    state.isolate &&
+    state.isolated.length === state.selected.length &&
+    state.selected.every((id) => state.isolated.includes(id));
   const selectedParts = state.selected.map((id) => parts.get(id)).filter((p) => !!p),
     selected = selectedParts[0],
     system = SYSTEMS.find((s) => s.id === selected?.system);
@@ -206,7 +214,11 @@ export default function AtlasViewer({
   };
   const choose = (c: Concept) => {
     setChosen(c);
-    setState((s) => ({ ...s, selected: elementsFor(c, s.visible), isolate: false, rotate: false }));
+    setIsolatedConcept(c);
+    setState((s) => {
+      const els = elementsFor(c, s.visible);
+      return { ...s, selected: els, isolated: els, isolate: true, rotate: false };
+    });
     setDetails(true);
     setPanel(null);
   };
@@ -218,22 +230,10 @@ export default function AtlasViewer({
     const p = parts.get(id);
     if (!p) return;
     setChosen({ id: p.conceptId, name: p.name, elements: [id] });
-    setState((s) => ({ ...s, selected: [id], isolate: false, rotate: false }));
+    setState((s) => ({ ...s, selected: [id], rotate: false }));
     setDetails(true);
     setPanel(null);
   };
-  const modeBytes = useMemo(
-    () =>
-      Object.fromEntries(
-        MODES.map((m) => [
-          m.id,
-          (atlas?.chunks ?? [])
-            .filter((c) => c.system && m.systems.includes(c.system))
-            .reduce((sum, c) => sum + (c.gzipBytes ?? c.bytes), 0),
-        ])
-      ),
-    [atlas]
-  );
   const modeReady = (m: Mode) => m.systems.every((id) => counts[id] > 0);
   const enterMode = (m: Mode) => {
     const concept = atlas?.concepts.find((c) => c.id === m.focus) ?? null;
@@ -484,11 +484,6 @@ export default function AtlasViewer({
                   onClick={() => enterMode(m)}
                 >
                   <span className="mode-name">{m.name}</span>
-                  <span className="mode-size">
-                    {modeBytes[m.id]
-                      ? `${(modeBytes[m.id] / 1e6).toFixed(modeBytes[m.id] < 1e6 ? 2 : 1)} MB`
-                      : ""}
-                  </span>
                 </Button>
               ))}
             </div>
@@ -883,7 +878,7 @@ export default function AtlasViewer({
         disablePointerDismissal
         onOpenChange={(open) => {
           setDetails(open);
-          if (!open) setState((s) => ({ ...s, selected: [], isolate: false }));
+          if (!open) setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
         }}
       >
         <SheetContent
@@ -893,7 +888,14 @@ export default function AtlasViewer({
         >
           <div className="detail-header">
             <div className="detail-accent" style={{ background: system?.color }} />
-            <div className="eyebrow">{system?.name ?? "ANATOMY"}</div>
+            {state.isolate && isolatedConcept && chosen && chosen.id !== isolatedConcept.id ? (
+              <button className="detail-back" onClick={() => choose(isolatedConcept)}>
+                <ChevronLeft size={14} />
+                {isolatedConcept.name}
+              </button>
+            ) : (
+              <div className="eyebrow">{system?.name ?? "ANATOMY"}</div>
+            )}
             <SheetTitle ref={detailTitle} tabIndex={-1} className="structure-title">
               {chosen?.name}
             </SheetTitle>
@@ -973,18 +975,26 @@ export default function AtlasViewer({
           </div>
           <div className="detail-actions">
             <Button
-              className={`primary-action ${state.isolate ? "active" : ""}`}
-              onClick={() => setState((s) => ({ ...s, isolate: !s.isolate, explode: 0 }))}
+              className={`primary-action ${isolatedIsSelection ? "active" : ""}`}
+              onClick={() => {
+                if (isolatedIsSelection) {
+                  setState((s) => ({ ...s, isolate: false, isolated: [], explode: 0 }));
+                  setIsolatedConcept(null);
+                } else {
+                  setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
+                  setIsolatedConcept(chosen);
+                }
+              }}
             >
               <Focus size={18} />
-              {state.isolate ? "Show surrounding anatomy" : "Isolate structure"}
+              {isolatedIsSelection ? "Show surrounding anatomy" : "Isolate structure"}
               <ChevronRight size={16} />
             </Button>
             <Button
               variant="ghost"
               className="secondary-action"
               onClick={() => {
-                setState((s) => ({ ...s, selected: [], isolate: false }));
+                setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
                 setDetails(false);
               }}
             >
@@ -994,9 +1004,11 @@ export default function AtlasViewer({
         </SheetContent>
       </Sheet>
       <Sheet open={about} onOpenChange={setAbout}>
-        <SheetContent className="about-sheet glass">
+        <SheetContent className="about-sheet glass" initialFocus={aboutTitle}>
           <div className="eyebrow">SOURCE & SCOPE</div>
-          <SheetTitle className="structure-title">A body, revealed.</SheetTitle>
+          <SheetTitle ref={aboutTitle} tabIndex={-1} className="structure-title">
+            A body, revealed.
+          </SheetTitle>
           <SheetDescription>
             Explore a male reference atlas and an adapted female study model.
           </SheetDescription>

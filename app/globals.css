@@ -1206,6 +1206,27 @@ body:has(.detail-sheet) [data-slot="sheet-overlay"] {
   gap: 14px;
   padding-right: 20px;
 }
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 3px 10px 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffffd9;
+  font-size: 12px;
+  font-weight: 500;
+  color: #394957;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.detail-back:hover {
+  background: white;
+  border-color: #263b4840;
+}
 .detail-scroll {
   display: flex;
   flex-direction: column;
@@ -2135,6 +2156,7 @@ h1 .edition {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 2px;
   min-height: 44px;
   padding: 7px 9px;
@@ -2151,11 +2173,6 @@ h1 .edition {
   font-weight: 500;
   color: #394957;
   line-height: 1.2;
-}
-.mode-chip .mode-size {
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  color: #8a949e;
 }
 .mode-chip[aria-pressed="true"] {
   background: #263b480f;
