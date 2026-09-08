@@ -999,8 +999,12 @@ export default function AtlasViewer({
               variant="ghost"
               className="secondary-action"
               onClick={() => {
-                setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
-                setDetails(false);
+                if (state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id) {
+                  choose(isolatedConcept);
+                } else {
+                  setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
+                  setDetails(false);
+                }
               }}
             >
               Clear selection
