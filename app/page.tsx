@@ -979,7 +979,7 @@ export default function AtlasViewer({
                   setIsolatedConcept(null);
                 } else {
                   setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
-                  setIsolatedConcept(chosen);
+                  if (!isolatedConcept) setIsolatedConcept(chosen);
                 }
               }}
             >
