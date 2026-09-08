@@ -999,7 +999,9 @@ export default function AtlasViewer({
                 }
               }}
             >
-              Clear selection
+              {state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id
+                ? "Clear selection"
+                : "Back"}
             </Button>
           </div>
         </SheetContent>
