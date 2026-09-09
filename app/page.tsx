@@ -92,6 +92,7 @@ export default function AtlasViewer({
   const detailTitle = useRef<HTMLHeadingElement>(null);
   const aboutTitle = useRef<HTMLHeadingElement>(null);
   const preExplodeView = useRef<View | null>(null);
+  const preIsolateExplode = useRef(0);
   const [atlas, setAtlas] = useState<Atlas | null>(null),
     [state, setState] = useState<SceneState>(() => ({
       ...initial,
@@ -224,9 +225,10 @@ export default function AtlasViewer({
   const choose = (c: Concept) => {
     setChosen(c);
     setIsolatedConcept(c);
+    preIsolateExplode.current = state.explode;
     setState((s) => {
       const els = elementsFor(c, s.visible);
-      return { ...s, selected: els, isolated: els, isolate: true, rotate: false };
+      return { ...s, selected: els, isolated: els, isolate: true, rotate: false, explode: 0 };
     });
     setDetails(true);
     setPanel(null);
@@ -996,10 +998,11 @@ export default function AtlasViewer({
                   if (selectedInsideIsolatedConcept && isolatedConcept) {
                     choose(isolatedConcept);
                   } else {
-                    setState((s) => ({ ...s, isolate: false, isolated: [], explode: 0 }));
+                    setState((s) => ({ ...s, isolate: false, isolated: [], explode: preIsolateExplode.current }));
                     setIsolatedConcept(null);
                   }
                 } else {
+                  preIsolateExplode.current = state.explode;
                   setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
                   setIsolatedConcept(state.isolate && isolatedConcept ? isolatedConcept : chosen);
                 }
@@ -1017,7 +1020,7 @@ export default function AtlasViewer({
                   choose(isolatedConcept);
                 } else {
                   setIsolatedConcept(null);
-                  setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
+                  setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current }));
                   setDetails(false);
                 }
               }}

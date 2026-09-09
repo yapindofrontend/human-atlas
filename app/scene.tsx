@@ -682,6 +682,10 @@ ${shader.fragmentShader}`;
         lastState?.region !== s.region ||
         lastState?.area !== s.area;
       if (changed) ensureChunks(s);
+      if (lastState?.isolate !== s.isolate) {
+        amount = s.explode;
+        dirty = true;
+      }
       const moving = Math.abs(amount - s.explode) > 0.0001;
       if (moving) {
         amount = T.MathUtils.damp(amount, s.explode, 8, dt);
