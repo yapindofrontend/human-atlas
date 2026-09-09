@@ -901,7 +901,7 @@ export default function AtlasViewer({
           setDetails(open);
           if (!open) {
             setIsolatedConcept(null);
-            setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
+            setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current }));
           }
         }}
       >
