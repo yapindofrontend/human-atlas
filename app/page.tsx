@@ -768,7 +768,7 @@ export default function AtlasViewer({
           <span>Systems</span>
         </Button>
         <div className="mobile-only dock-divider" aria-hidden="true" />
-        <div className="explode-control">
+        {!(state.isolate && state.isolated.length <= 1) && <div className="explode-control">
           <div className="explode-label">
             <label id="explode-label" className="explode-title">
               <Boxes size={14} className="explode-icon" />
@@ -834,7 +834,7 @@ export default function AtlasViewer({
               Separated
             </button>
           </div>
-        </div>
+        </div>}
         <div className="dock-divider" aria-hidden="true" />
         <Button
           variant="ghost"
