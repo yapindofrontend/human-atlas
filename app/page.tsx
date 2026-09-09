@@ -900,8 +900,12 @@ export default function AtlasViewer({
         onOpenChange={(open) => {
           setDetails(open);
           if (!open) {
-            setIsolatedConcept(null);
-            setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current }));
+            if (selectedInsideIsolatedConcept && isolatedConcept) {
+              choose(isolatedConcept);
+            } else {
+              setIsolatedConcept(null);
+              setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current }));
+            }
           }
         }}
       >
