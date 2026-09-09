@@ -81,6 +81,16 @@ export default function AnatomyScene({ atlas, state, onSelect, onProgress, onErr
     controls.addEventListener("change", () => {
       dirty = true;
     });
+    const heldKeys = new Set<string>();
+    const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
+    window.addEventListener("keydown", (e) => {
+      if (!ARROW_KEYS.has(e.key)) return;
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)) return;
+      e.preventDefault();
+      heldKeys.add(e.key);
+    }, { signal: abort.signal });
+    window.addEventListener("keyup", (e) => { heldKeys.delete(e.key); }, { signal: abort.signal });
     const pmrem = new T.PMREMGenerator(renderer);
     const room = new RoomEnvironment();
     const env = pmrem.fromScene(room, 0.04);
@@ -683,6 +693,21 @@ ${shader.fragmentShader}`;
       if (disposed) return;
       frame = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
+      if (heldKeys.size > 0) {
+        const speed = Math.PI / 2;
+        const offset = camera.position.clone().sub(controls.target);
+        const spherical = new T.Spherical().setFromVector3(offset);
+        if (heldKeys.has("ArrowLeft")) spherical.theta -= speed * dt;
+        if (heldKeys.has("ArrowRight")) spherical.theta += speed * dt;
+        if (heldKeys.has("ArrowUp")) spherical.phi -= speed * dt;
+        if (heldKeys.has("ArrowDown")) spherical.phi += speed * dt;
+        spherical.phi = Math.max(0.01, Math.min(controls.maxPolarAngle, spherical.phi));
+        spherical.makeSafe();
+        offset.setFromSpherical(spherical);
+        camera.position.copy(controls.target).add(offset);
+        controls.update();
+        dirty = true;
+      }
       const s = latest.current;
       const changed =
         lastState?.visible !== s.visible ||
