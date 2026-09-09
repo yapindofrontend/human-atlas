@@ -43,6 +43,9 @@ export default function AnatomyScene({ atlas, state, onSelect, onProgress, onErr
     let layoutKey = "";
     let amount = 0;
     let lastState: SceneState | null = null;
+    let preCameraPosition: T.Vector3 | null = null;
+    let preCameraTarget: T.Vector3 | null = null;
+    let preCameraMaxDistance = 40;
     const abort = new AbortController();
     let renderer: T.WebGLRenderer;
     try {
@@ -790,6 +793,11 @@ ${shader.fragmentShader}`;
         : "";
       if (isolateKey !== lastIsolate || (s.isolate && moving)) {
         if (s.isolate) {
+          if (!lastIsolate) {
+            preCameraPosition = camera.position.clone();
+            preCameraTarget = controls.target.clone();
+            preCameraMaxDistance = controls.maxDistance;
+          }
           const boundary = s.isolated.length ? s.isolated : s.selected;
           const box = new T.Box3();
           atlas.parts.forEach((p, i) => {
@@ -847,16 +855,25 @@ ${shader.fragmentShader}`;
                 1.35
             );
             controls.maxDistance = Math.max(40, distance * 2);
+            const dir = camera.position.clone().sub(controls.target).normalize();
             controls.target.copy(center);
-            camera.position
-              .copy(center)
-              .add(new T.Vector3(0.2, 0.1, 1).normalize().multiplyScalar(distance));
+            camera.position.copy(center).addScaledVector(dir, distance);
             controls.update();
             dirty = true;
           }
         } else if (lastIsolate) {
           camera.clearViewOffset();
-          fit(s.view, amount);
+          if (preCameraPosition && preCameraTarget) {
+            controls.target.copy(preCameraTarget);
+            camera.position.copy(preCameraPosition);
+            controls.maxDistance = preCameraMaxDistance;
+            controls.update();
+            dirty = true;
+            preCameraPosition = null;
+            preCameraTarget = null;
+          } else {
+            fit(s.view, amount);
+          }
         }
         lastIsolate = isolateKey;
       }
