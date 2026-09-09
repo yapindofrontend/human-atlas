@@ -768,7 +768,7 @@ export default function AtlasViewer({
           <span>Systems</span>
         </Button>
         <div className="mobile-only dock-divider" aria-hidden="true" />
-        {!(state.isolate && state.isolated.length <= 1) && <div className="explode-control">
+        <div className="explode-control">
           <div className="explode-label">
             <label id="explode-label" className="explode-title">
               <Boxes size={14} className="explode-icon" />
@@ -785,6 +785,7 @@ export default function AtlasViewer({
               min={0}
               max={100}
               step={1}
+              disabled={state.isolate && state.isolated.length <= 1}
               value={[state.explode * 100]}
               onValueChange={(v) => {
                 if (animRef.current) {
@@ -811,6 +812,7 @@ export default function AtlasViewer({
           <div className="slider-endpoints">
             <button
               type="button"
+              disabled={state.isolate && state.isolated.length <= 1}
               className={`endpoint-btn ${state.explode < 0.1 ? "is-active" : ""}`}
               onClick={() => setExplodeAnimated(0)}
               title="Fully assembled (0%)"
@@ -819,6 +821,7 @@ export default function AtlasViewer({
             </button>
             <button
               type="button"
+              disabled={state.isolate && state.isolated.length <= 1}
               className={`endpoint-btn ${Math.abs(state.explode - 0.5) < 0.12 ? "is-active" : ""}`}
               onClick={() => setExplodeAnimated(0.5)}
               title="Expanded (50%)"
@@ -827,6 +830,7 @@ export default function AtlasViewer({
             </button>
             <button
               type="button"
+              disabled={state.isolate && state.isolated.length <= 1}
               className={`endpoint-btn ${state.explode > 0.9 ? "is-active" : ""}`}
               onClick={() => setExplodeAnimated(1)}
               title="Fully separated (100%)"
@@ -834,7 +838,7 @@ export default function AtlasViewer({
               Separated
             </button>
           </div>
-        </div>}
+        </div>
         <div className="dock-divider" aria-hidden="true" />
         <Button
           variant="ghost"
