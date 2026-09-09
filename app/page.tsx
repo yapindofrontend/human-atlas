@@ -170,17 +170,27 @@ export default function AtlasViewer({
     state.isolate &&
     state.isolated.length === state.selected.length &&
     state.selected.every((id) => state.isolated.includes(id));
+  const selectedInsideIsolatedConcept =
+    state.isolate && isolatedConcept !== null && chosen?.id !== isolatedConcept.id;
   const selectedParts = state.selected.map((id) => parts.get(id)).filter((p) => !!p),
     selected = selectedParts[0],
     system = SYSTEMS.find((s) => s.id === selected?.system);
   const visibleCount = atlas?.parts.filter((p) => partIsVisible(p, state)).length ?? 0;
   const chooseRegion = (id: RegionId | null) => {
     setDetails(false);
-    setState((s) => ({ ...s, region: id, area: null, selected: [], isolate: false }));
+    setIsolatedConcept(null);
+    setState((s) => ({ ...s, region: id, area: null, selected: [], isolate: false, isolated: [] }));
   };
   const chooseArea = (id: AreaId) => {
     setDetails(false);
-    setState((s) => ({ ...s, area: s.area === id ? null : id, selected: [], isolate: false }));
+    setIsolatedConcept(null);
+    setState((s) => ({
+      ...s,
+      area: s.area === id ? null : id,
+      selected: [],
+      isolate: false,
+      isolated: [],
+    }));
   };
   const areas = AREAS.filter((a) => !state.region || a.regions.includes(state.region));
   const results = useMemo(() => {
@@ -239,11 +249,13 @@ export default function AtlasViewer({
     setMode(m);
     setPanel(null);
     setChosen(concept);
+    setIsolatedConcept(null);
     setState((s) => ({
       ...s,
       visible: m.systems,
       selected: concept ? elementsFor(concept, m.systems) : [],
       isolate: false,
+      isolated: [],
       explode: 0,
       rotate: false,
       view: "three-quarter",
@@ -254,10 +266,12 @@ export default function AtlasViewer({
   const toggle = (id: SystemId) => {
     setDetails(false);
     setMode(null);
+    setIsolatedConcept(null);
     setState((s) => ({
       ...s,
       selected: [],
       isolate: false,
+      isolated: [],
       breastView:
         (id === "mammary" || id === "integumentary") && !s.visible.includes(id)
           ? "tissue"
@@ -312,6 +326,7 @@ export default function AtlasViewer({
     }
     setState((s) => ({ ...initial, visible: defaultVisible(model), reset: s.reset + 1 }));
     setChosen(null);
+    setIsolatedConcept(null);
     setDetails(false);
     setPanel(null);
     setMode(null);
@@ -882,7 +897,10 @@ export default function AtlasViewer({
         disablePointerDismissal
         onOpenChange={(open) => {
           setDetails(open);
-          if (!open) setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
+          if (!open) {
+            setIsolatedConcept(null);
+            setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
+          }
         }}
       >
         <SheetContent
@@ -975,7 +993,7 @@ export default function AtlasViewer({
               className={`primary-action ${isolatedIsSelection ? "active" : ""}`}
               onClick={() => {
                 if (isolatedIsSelection) {
-                  if (state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id) {
+                  if (selectedInsideIsolatedConcept && isolatedConcept) {
                     choose(isolatedConcept);
                   } else {
                     setState((s) => ({ ...s, isolate: false, isolated: [], explode: 0 }));
@@ -983,7 +1001,7 @@ export default function AtlasViewer({
                   }
                 } else {
                   setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
-                  if (!isolatedConcept) setIsolatedConcept(chosen);
+                  setIsolatedConcept(state.isolate && isolatedConcept ? isolatedConcept : chosen);
                 }
               }}
             >
@@ -995,17 +1013,16 @@ export default function AtlasViewer({
               variant="ghost"
               className="secondary-action"
               onClick={() => {
-                if (state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id) {
+                if (selectedInsideIsolatedConcept && isolatedConcept) {
                   choose(isolatedConcept);
                 } else {
+                  setIsolatedConcept(null);
                   setState((s) => ({ ...s, selected: [], isolate: false, isolated: [] }));
                   setDetails(false);
                 }
               }}
             >
-              {state.isolate && isolatedConcept && chosen?.id !== isolatedConcept.id
-                ? "Clear selection"
-                : "Back"}
+              {selectedInsideIsolatedConcept ? "Clear selection" : "Back"}
             </Button>
           </div>
         </SheetContent>
