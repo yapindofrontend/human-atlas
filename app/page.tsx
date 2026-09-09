@@ -94,6 +94,7 @@ export default function AtlasViewer({
   const preExplodeView = useRef<View | null>(null);
   const preIsolateExplode = useRef(0);
   const preIsolateRotate = useRef(false);
+  const preIsolateView = useRef<View>("three-quarter");
   const [atlas, setAtlas] = useState<Atlas | null>(null),
     [state, setState] = useState<SceneState>(() => ({
       ...initial,
@@ -226,11 +227,14 @@ export default function AtlasViewer({
   const choose = (c: Concept) => {
     setChosen(c);
     setIsolatedConcept(c);
-    preIsolateExplode.current = state.explode;
-    preIsolateRotate.current = state.rotate;
     setState((s) => {
+      if (!s.isolate) {
+        preIsolateExplode.current = s.explode;
+        preIsolateRotate.current = s.rotate;
+        preIsolateView.current = s.view;
+      }
       const els = elementsFor(c, s.visible);
-      return { ...s, selected: els, isolated: els, isolate: true, rotate: false, explode: 0 };
+      return { ...s, selected: els, isolated: els, isolate: true, rotate: false, explode: s.isolate ? s.explode : 0 };
     });
     setDetails(true);
     setPanel(null);
@@ -243,7 +247,7 @@ export default function AtlasViewer({
     const p = parts.get(id);
     if (!p) return;
     setChosen({ id: p.conceptId, name: p.name, elements: [id] });
-    setState((s) => ({ ...s, selected: [id], rotate: false }));
+    setState((s) => ({ ...s, selected: [id], isolated: s.isolate ? [id] : s.isolated, rotate: false }));
     setDetails(true);
     setPanel(null);
   };
@@ -287,9 +291,9 @@ export default function AtlasViewer({
   const setExplodeAnimated = (target: number) => {
     if (animRef.current) cancelAnimationFrame(animRef.current);
     const start = state.explode;
-    if (target > 0.8 && start <= 0.8 && !preExplodeView.current)
+    if (target > 0.8 && start <= 0.8 && !preExplodeView.current && !state.isolate)
       preExplodeView.current = state.view;
-    const restoredView = target <= 0.8 && preExplodeView.current ? preExplodeView.current : null;
+    const restoredView = target <= 0.8 && !state.isolate && preExplodeView.current ? preExplodeView.current : null;
     if (restoredView) preExplodeView.current = null;
     const resolveView = (val: number, cur: View): View =>
       val > 0.8 ? "front" : (restoredView ?? cur);
@@ -791,14 +795,14 @@ export default function AtlasViewer({
                 setState((s) => {
                   const crossingUp = s.explode <= 0.8 && val > 0.8;
                   const crossingDown = s.explode > 0.8 && val <= 0.8;
-                  if (crossingUp) preExplodeView.current = s.view;
+                  if (crossingUp && !s.isolate) preExplodeView.current = s.view;
                   const view =
-                    crossingDown && preExplodeView.current
+                    crossingDown && !s.isolate && preExplodeView.current
                       ? preExplodeView.current
                       : val > 0.8
                         ? "front"
                         : s.view;
-                  if (crossingDown) preExplodeView.current = null;
+                  if (crossingDown && !s.isolate) preExplodeView.current = null;
                   return { ...s, explode: val, view, rotate: false };
                 });
               }}
@@ -895,7 +899,7 @@ export default function AtlasViewer({
               choose(isolatedConcept);
             } else {
               setIsolatedConcept(null);
-              setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current }));
+              setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current, view: preIsolateExplode.current > 0.8 ? "front" : preIsolateView.current }));
             }
           }
         }}
@@ -993,12 +997,13 @@ export default function AtlasViewer({
                   if (selectedInsideIsolatedConcept && isolatedConcept) {
                     choose(isolatedConcept);
                   } else {
-                    setState((s) => ({ ...s, isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current }));
+                    setState((s) => ({ ...s, isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current, view: preIsolateExplode.current > 0.8 ? "front" : preIsolateView.current }));
                     setIsolatedConcept(null);
                   }
                 } else {
                   preIsolateExplode.current = state.explode;
                   preIsolateRotate.current = state.rotate;
+                  preIsolateView.current = state.view;
                   setState((s) => ({ ...s, isolate: true, isolated: s.selected, explode: 0 }));
                   setIsolatedConcept(state.isolate && isolatedConcept ? isolatedConcept : chosen);
                 }
@@ -1016,7 +1021,7 @@ export default function AtlasViewer({
                   choose(isolatedConcept);
                 } else {
                   setIsolatedConcept(null);
-                  setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current }));
+                  setState((s) => ({ ...s, selected: [], isolate: false, isolated: [], explode: preIsolateExplode.current, rotate: preIsolateRotate.current, view: preIsolateExplode.current > 0.8 ? "front" : preIsolateView.current }));
                   setDetails(false);
                 }
               }}
