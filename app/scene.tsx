@@ -43,6 +43,7 @@ export default function AnatomyScene({ atlas, state, onSelect, onProgress, onErr
     let layoutKey = "";
     let amount = 0;
     let lastState: SceneState | null = null;
+    let wasMoving = false;
     let preCameraPosition: T.Vector3 | null = null;
     let preCameraTarget: T.Vector3 | null = null;
     let preCameraMaxDistance = 40;
@@ -780,8 +781,9 @@ ${shader.fragmentShader}`;
         lastRegion = s.region;
         lastArea = s.area;
       }
-      if (moving && !s.isolate && amount > 0.45)
+      if (wasMoving && !moving && !s.isolate && amount > 0.45)
         fit(amount > 0.5 ? "front" : s.view, Math.max(0, (amount - 0.3) / 0.7));
+      wasMoving = moving;
       const isolateKey = s.isolate
         ? (s.isolated.length ? s.isolated : s.selected).join(",") +
           ":" +
