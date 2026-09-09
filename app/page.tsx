@@ -684,6 +684,7 @@ export default function AtlasViewer({
               placeholder="Heart, femur, cranial nerve…"
               aria-label="Search named anatomical structures"
               showTrigger={false}
+              onFocus={(e) => (e.target as HTMLInputElement).select()}
             />
             <ComboboxContent className="anatomy-search-results">
               <ComboboxEmpty>No structures match your search.</ComboboxEmpty>
