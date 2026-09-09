@@ -355,8 +355,8 @@ export default function AtlasViewer({
           <span className="status-dot" /> INTERACTIVE ANATOMY
         </div>
         <h1>
-          <a className="atlas-home-link" href="/" aria-label="Human Atlas: Chaz home">
-            Human Atlas: Chaz
+          <a className="atlas-home-link" href="/" aria-label="Human Atlas home">
+            Human Atlas
           </a>
           <Badge variant="outline" className="edition">
             3D
