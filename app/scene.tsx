@@ -50,6 +50,7 @@ export default function AnatomyScene({ atlas, state, onSelect, onProgress, onErr
     let explodeCameraPosition: T.Vector3 | null = null;
     let explodeCameraTarget: T.Vector3 | null = null;
     let explodeSnapKey = "";
+    let cameraExtent = 0;
     const abort = new AbortController();
     let renderer: T.WebGLRenderer;
     try {
@@ -791,8 +792,8 @@ ${shader.fragmentShader}`;
         s.region !== lastRegion ||
         s.area !== lastArea
       ) {
-        // While restoring the pre-explode camera, keep trackers in sync but skip the reframe so it doesn't fight the tween.
-        if (!restoringExplode) fit(s.view, amount);
+        const explicitChange = s.reset !== lastReset || s.region !== lastRegion || s.area !== lastArea;
+        if (!restoringExplode && explicitChange) fit(s.view, cameraExtent);
         lastView = s.view;
         lastReset = s.reset;
         lastRegion = s.region;
@@ -805,11 +806,23 @@ ${shader.fragmentShader}`;
         controls.update();
         dirty = true;
         if (!moving) {
+          cameraExtent = 0;
           explodeCameraPosition = null;
           explodeCameraTarget = null;
         }
-      } else if (!s.isolate && (moving || wasMoving))
-        fit(amount > 0.5 ? "front" : s.view, Math.max(0, (amount - 0.3) / 0.7));
+      } else if (!s.isolate) {
+        const targetExtent = Math.max(0, (amount - 0.3) / 0.7);
+        const atAssembled = wasMoving && !moving && s.explode < 0.001;
+        if (atAssembled) {
+          cameraExtent = 0;
+          fit(s.view, 0);
+          dirty = true;
+        } else if (moving || Math.abs(cameraExtent - targetExtent) > 0.001) {
+          cameraExtent = T.MathUtils.damp(cameraExtent, targetExtent, 3, dt);
+          fit(amount > 0.5 ? "front" : s.view, cameraExtent);
+          dirty = true;
+        }
+      }
       wasMoving = moving;
       const isolateKey = s.isolate
         ? (s.isolated.length ? s.isolated : s.selected).join(",") +
