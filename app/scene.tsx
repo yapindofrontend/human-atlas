@@ -47,6 +47,9 @@ export default function AnatomyScene({ atlas, state, onSelect, onProgress, onErr
     let preCameraPosition: T.Vector3 | null = null;
     let preCameraTarget: T.Vector3 | null = null;
     let preCameraMaxDistance = 40;
+    let explodeCameraPosition: T.Vector3 | null = null;
+    let explodeCameraTarget: T.Vector3 | null = null;
+    let explodeSnapKey = "";
     const abort = new AbortController();
     let renderer: T.WebGLRenderer;
     try {
@@ -691,6 +694,19 @@ ${shader.fragmentShader}`;
         dirty = true;
       }
       const moving = Math.abs(amount - s.explode) > 0.0001;
+      const framingKey = `${s.region ?? ""}|${s.area ?? ""}|${s.visible.join(",")}`;
+      // Snapshot assembled camera when explosion starts; restore it exactly on collapse. Drop it if framing state changes while exploded so restore falls back to reframing.
+      if (!s.isolate && s.explode > 0.001 && amount < 0.02 && !explodeCameraPosition) {
+        explodeCameraPosition = camera.position.clone();
+        explodeCameraTarget = controls.target.clone();
+        explodeSnapKey = framingKey;
+      }
+      if (explodeCameraPosition && framingKey !== explodeSnapKey) {
+        explodeCameraPosition = null;
+        explodeCameraTarget = null;
+      }
+      const restoringExplode =
+        !s.isolate && s.explode < 0.001 && !!explodeCameraPosition && !!explodeCameraTarget;
       if (moving) {
         amount = T.MathUtils.damp(amount, s.explode, 8, dt);
         dirty = true;
@@ -775,13 +791,24 @@ ${shader.fragmentShader}`;
         s.region !== lastRegion ||
         s.area !== lastArea
       ) {
-        fit(s.view, amount);
+        // While restoring the pre-explode camera, keep trackers in sync but skip the reframe so it doesn't fight the tween.
+        if (!restoringExplode) fit(s.view, amount);
         lastView = s.view;
         lastReset = s.reset;
         lastRegion = s.region;
         lastArea = s.area;
       }
-      if (wasMoving && !moving && !s.isolate && amount > 0.45)
+      if (restoringExplode && explodeCameraPosition && explodeCameraTarget) {
+        const k = moving ? 1 - Math.exp(-8 * dt) : 1;
+        camera.position.lerp(explodeCameraPosition, k);
+        controls.target.lerp(explodeCameraTarget, k);
+        controls.update();
+        dirty = true;
+        if (!moving) {
+          explodeCameraPosition = null;
+          explodeCameraTarget = null;
+        }
+      } else if (!s.isolate && (moving || wasMoving))
         fit(amount > 0.5 ? "front" : s.view, Math.max(0, (amount - 0.3) / 0.7));
       wasMoving = moving;
       const isolateKey = s.isolate
